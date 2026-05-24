@@ -1,0 +1,49 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "rin",
+  "model": "deepseek/deepseek-v4-pro",
+  "agent": {
+    "kotoba": {
+      "description": "詞子 — Prompt Engineer. แปลง prompt ดิบจาก user ให้เป็น prompt premium, ครบถ้วน, ประหยัด token",
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-pro",
+      "permission": { "edit": "allow", "bash": "deny", "webfetch": "deny" }
+    },
+    "shiori": {
+      "description": "栞 — Researcher & Writer. ค้นคว้าเทคโนโลยี, libraries, best practices และเขียนคู่มือ/README",
+      "mode": "subagent",
+      "model": "minimax/minimax-m2.5",
+      "permission": { "edit": "allow", "bash": "deny", "webfetch": "allow" }
+    },
+    "aya": {
+      "description": "彩 — Frontend Engineer. สร้าง UI components ด้วย Next.js, React, Tailwind CSS",
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-flash",
+      "permission": { "edit": "allow", "bash": "allow", "webfetch": "deny" }
+    },
+    "midori": {
+      "description": "翠 — Backend Engineer. พัฒนา Go API, business logic, database",
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-flash",
+      "permission": { "edit": "allow", "bash": "allow", "webfetch": "deny" }
+    },
+    "yui": {
+      "description": "結 — Design Critic. ตรวจสอบ UI/UX, accessibility, responsiveness",
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-pro",
+      "permission": { "edit": "deny", "bash": "deny", "webfetch": "allow" }
+    },
+    "sakura": {
+      "description": "桜 — QA Engineer. เขียน test, ทดสอบ edge cases, รับประกัน quality",
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-pro",
+      "permission": { "edit": "allow", "bash": "allow", "webfetch": "deny" }
+    },
+    "kagami": {
+      "description": "鏡 — Code Reviewer. ตรวจสอบ code quality, security, performance, conventions",
+      "mode": "subagent",
+      "model": "deepseek/deepseek-v4-pro",
+      "permission": { "edit": "deny", "bash": "deny", "webfetch": "deny" }
+    }
+  }
+}
