@@ -16,10 +16,13 @@ func NewTagHandler(pool *pgxpool.Pool) *TagHandler {
 	return &TagHandler{pool: pool}
 }
 
-// List returns all customer tags
-// GET /api/tags
+func (h *TagHandler) vendorID(r *http.Request) string {
+	return r.Context().Value(VendorIDKey).(string)
+}
+
 func (h *TagHandler) List(w http.ResponseWriter, r *http.Request) {
-	tags, err := repository.TagList(h.pool)
+	vendorID := h.vendorID(r)
+	tags, err := repository.TagList(h.pool, vendorID)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to list tags")
 		return
@@ -27,9 +30,8 @@ func (h *TagHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"tags": tags})
 }
 
-// Create adds a new customer tag
-// POST /api/tags
 func (h *TagHandler) Create(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	var req struct {
 		Name string `json:"name"`
 	}
@@ -37,7 +39,7 @@ func (h *TagHandler) Create(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	tag, err := repository.TagCreate(h.pool, req.Name)
+	tag, err := repository.TagCreate(h.pool, vendorID, req.Name)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to create tag")
 		return
@@ -45,11 +47,10 @@ func (h *TagHandler) Create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, tag)
 }
 
-// Delete removes a customer tag
-// DELETE /api/tags/{id}
 func (h *TagHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	id := r.PathValue("id")
-	if err := repository.TagDelete(h.pool, id); err != nil {
+	if err := repository.TagDelete(h.pool, vendorID, id); err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to delete tag")
 		return
 	}

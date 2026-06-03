@@ -18,9 +18,13 @@ func NewCategoryHandler(pool *pgxpool.Pool) *CategoryHandler {
 	return &CategoryHandler{pool: pool}
 }
 
-// List handles GET /api/categories
+func (h *CategoryHandler) vendorID(r *http.Request) string {
+	return r.Context().Value(VendorIDKey).(string)
+}
+
 func (h *CategoryHandler) List(w http.ResponseWriter, r *http.Request) {
-	categories, err := repository.CategoryList(h.pool)
+	vendorID := h.vendorID(r)
+	categories, err := repository.CategoryList(h.pool, vendorID)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to list categories")
 		return
@@ -28,8 +32,8 @@ func (h *CategoryHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, categories)
 }
 
-// Create handles POST /api/categories
 func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	var req models.CreateCategoryRequest
 	if err := readJSON(r, &req); err != nil {
 		errorJSON(w, http.StatusBadRequest, "invalid request body")
@@ -42,7 +46,7 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cat, err := repository.CategoryCreate(h.pool, req.Name, req.SortOrder)
+	cat, err := repository.CategoryCreate(h.pool, vendorID, req.Name, req.SortOrder)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to create category")
 		return
@@ -51,8 +55,8 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, cat)
 }
 
-// Update handles PUT /api/categories/{id}
 func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	id := r.PathValue("id")
 	if id == "" {
 		errorJSON(w, http.StatusBadRequest, "missing category id")
@@ -71,7 +75,7 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := repository.CategoryUpdate(h.pool, id, req.Name, req.SortOrder); err != nil {
+	if err := repository.CategoryUpdate(h.pool, vendorID, id, req.Name, req.SortOrder); err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to update category")
 		return
 	}
@@ -79,15 +83,15 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "category updated"})
 }
 
-// Delete handles DELETE /api/categories/{id}
 func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	id := r.PathValue("id")
 	if id == "" {
 		errorJSON(w, http.StatusBadRequest, "missing category id")
 		return
 	}
 
-	if err := repository.CategoryDelete(h.pool, id); err != nil {
+	if err := repository.CategoryDelete(h.pool, vendorID, id); err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to delete category")
 		return
 	}

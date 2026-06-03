@@ -9,29 +9,26 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// DailyReport generates a report for the given date (YYYY-MM-DD).
-func DailyReport(pool *pgxpool.Pool, date string) (*models.DailyReport, error) {
+func DailyReport(pool *pgxpool.Pool, vendorID, date string) (*models.DailyReport, error) {
 	ctx := context.Background()
 
 	report := &models.DailyReport{Date: date}
 
-	// Overall totals (non-cancelled orders)
 	err := pool.QueryRow(ctx,
 		`SELECT COUNT(*), COALESCE(SUM(total), 0), COALESCE(SUM(discount), 0)
-		 FROM orders WHERE created_at::date = $1::date AND status != 'cancelled'`,
-		date,
+		 FROM orders WHERE created_at::date = $1::date AND status != 'cancelled' AND vendor_id = $2`,
+		date, vendorID,
 	).Scan(&report.TotalOrders, &report.TotalRevenue, &report.TotalDiscount)
 	if err != nil {
 		return nil, fmt.Errorf("daily totals: %w", err)
 	}
 
-	// By payment method breakdown
 	rows, err := pool.Query(ctx,
 		`SELECT COALESCE(payment_method, 'unknown'), COUNT(*), COALESCE(SUM(total), 0)
 		 FROM orders
-		 WHERE created_at::date = $1::date AND status != 'cancelled'
+		 WHERE created_at::date = $1::date AND status != 'cancelled' AND vendor_id = $2
 		 GROUP BY payment_method`,
-		date,
+		date, vendorID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("daily by payment: %w", err)
@@ -50,8 +47,7 @@ func DailyReport(pool *pgxpool.Pool, date string) (*models.DailyReport, error) {
 		report.ByPayment = []models.PaymentSummary{}
 	}
 
-	// Top 5 products
-	report.TopProducts, err = getTopProducts(ctx, pool, "o.created_at::date = $1::date", date)
+	report.TopProducts, err = getTopProducts(ctx, pool, vendorID, "o.created_at::date = $1::date AND o.vendor_id = $2", date, vendorID)
 	if err != nil {
 		return nil, err
 	}
@@ -59,30 +55,27 @@ func DailyReport(pool *pgxpool.Pool, date string) (*models.DailyReport, error) {
 	return report, nil
 }
 
-// MonthlyReport generates a report for the given month (YYYY-MM).
-func MonthlyReport(pool *pgxpool.Pool, month string) (*models.MonthlyReport, error) {
+func MonthlyReport(pool *pgxpool.Pool, vendorID, month string) (*models.MonthlyReport, error) {
 	ctx := context.Background()
 
 	report := &models.MonthlyReport{Month: month}
 
-	// Overall totals
 	err := pool.QueryRow(ctx,
 		`SELECT COUNT(*), COALESCE(SUM(total), 0), COALESCE(SUM(discount), 0)
 		 FROM orders
-		 WHERE to_char(created_at, 'YYYY-MM') = $1 AND status != 'cancelled'`,
-		month,
+		 WHERE to_char(created_at, 'YYYY-MM') = $1 AND status != 'cancelled' AND vendor_id = $2`,
+		month, vendorID,
 	).Scan(&report.TotalOrders, &report.TotalRevenue, &report.TotalDiscount)
 	if err != nil {
 		return nil, fmt.Errorf("monthly totals: %w", err)
 	}
 
-	// By payment method
 	rows, err := pool.Query(ctx,
 		`SELECT COALESCE(payment_method, 'unknown'), COUNT(*), COALESCE(SUM(total), 0)
 		 FROM orders
-		 WHERE to_char(created_at, 'YYYY-MM') = $1 AND status != 'cancelled'
+		 WHERE to_char(created_at, 'YYYY-MM') = $1 AND status != 'cancelled' AND vendor_id = $2
 		 GROUP BY payment_method`,
-		month,
+		month, vendorID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("monthly by payment: %w", err)
@@ -101,14 +94,13 @@ func MonthlyReport(pool *pgxpool.Pool, month string) (*models.MonthlyReport, err
 		report.ByPayment = []models.PaymentSummary{}
 	}
 
-	// Daily breakdown
 	dailyRows, err := pool.Query(ctx,
 		`SELECT created_at::date::text, COUNT(*), COALESCE(SUM(total), 0)
 		 FROM orders
-		 WHERE to_char(created_at, 'YYYY-MM') = $1 AND status != 'cancelled'
+		 WHERE to_char(created_at, 'YYYY-MM') = $1 AND status != 'cancelled' AND vendor_id = $2
 		 GROUP BY created_at::date
 		 ORDER BY created_at::date ASC`,
-		month,
+		month, vendorID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("monthly daily breakdown: %w", err)
@@ -127,8 +119,7 @@ func MonthlyReport(pool *pgxpool.Pool, month string) (*models.MonthlyReport, err
 		report.DailyBreakdown = []models.DailySummary{}
 	}
 
-	// Top products for the month
-	report.TopProducts, err = getTopProducts(ctx, pool, "to_char(o.created_at, 'YYYY-MM') = $1", month)
+	report.TopProducts, err = getTopProducts(ctx, pool, vendorID, "to_char(o.created_at, 'YYYY-MM') = $1 AND o.vendor_id = $2", month, vendorID)
 	if err != nil {
 		return nil, err
 	}
@@ -136,18 +127,19 @@ func MonthlyReport(pool *pgxpool.Pool, month string) (*models.MonthlyReport, err
 	return report, nil
 }
 
-// getTopProducts returns the top 5 products by quantity sold matching the given where clause.
-func getTopProducts(ctx context.Context, pool *pgxpool.Pool, whereClause string, arg interface{}) ([]models.TopProduct, error) {
+func getTopProducts(ctx context.Context, pool *pgxpool.Pool, vendorID string, whereClause string, args ...interface{}) ([]models.TopProduct, error) {
 	query := fmt.Sprintf(`
 		SELECT oi.product_id, oi.product_name, SUM(oi.qty) AS total_qty, SUM(oi.subtotal) AS total_amount
 		FROM order_items oi
 		JOIN orders o ON o.id = oi.order_id
-		WHERE %s AND o.status != 'cancelled'
+		WHERE %s AND o.status != 'cancelled' AND o.vendor_id = $%d
 		GROUP BY oi.product_id, oi.product_name
 		ORDER BY total_qty DESC
-		LIMIT 5`, whereClause)
+		LIMIT 5`, whereClause, len(args)+1)
 
-	rows, err := pool.Query(ctx, query, arg)
+	allArgs := append(args, vendorID)
+
+	rows, err := pool.Query(ctx, query, allArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("top products: %w", err)
 	}

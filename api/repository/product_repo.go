@@ -13,12 +13,13 @@ import (
 type ProductFilter struct {
 	Search     string
 	CategoryID *string
+	VendorID   string
 }
 
 func ProductList(pool *pgxpool.Pool, filter ProductFilter) ([]models.Product, error) {
-	where := []string{"1=1"}
-	args := []interface{}{}
-	i := 1
+	where := []string{"p.vendor_id = $1"}
+	args := []interface{}{filter.VendorID}
+	i := 2
 
 	if filter.Search != "" {
 		where = append(where, fmt.Sprintf("p.name ILIKE $%d", i))
@@ -32,7 +33,7 @@ func ProductList(pool *pgxpool.Pool, filter ProductFilter) ([]models.Product, er
 	}
 
 	query := fmt.Sprintf(`
-		SELECT p.id, p.category_id, COALESCE(c.name, '') as category_name,
+		SELECT p.id, p.vendor_id, p.category_id, COALESCE(c.name, '') as category_name,
 		       p.name, p.price, p.unit, COALESCE(p.image_url, '') as image_url,
 		       p.is_active, p.created_at, p.updated_at
 		FROM products p
@@ -49,7 +50,7 @@ func ProductList(pool *pgxpool.Pool, filter ProductFilter) ([]models.Product, er
 	var products []models.Product
 	for rows.Next() {
 		var p models.Product
-		err := rows.Scan(&p.ID, &p.CategoryID, &p.CategoryName, &p.Name, &p.Price, &p.Unit,
+		err := rows.Scan(&p.ID, &p.VendorID, &p.CategoryID, &p.CategoryName, &p.Name, &p.Price, &p.Unit,
 			&p.ImageURL, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("scan product: %w", err)
@@ -62,18 +63,18 @@ func ProductList(pool *pgxpool.Pool, filter ProductFilter) ([]models.Product, er
 	return products, nil
 }
 
-func ProductGetByID(pool *pgxpool.Pool, id string) (*models.Product, error) {
+func ProductGetByID(pool *pgxpool.Pool, vendorID, id string) (*models.Product, error) {
 	p := &models.Product{}
 	err := pool.QueryRow(
 		context.Background(),
-		`SELECT p.id, p.category_id, COALESCE(c.name, '') as category_name,
+		`SELECT p.id, p.vendor_id, p.category_id, COALESCE(c.name, '') as category_name,
 		        p.name, p.price, p.unit, COALESCE(p.image_url, '') as image_url,
 		        p.is_active, p.created_at, p.updated_at
 		 FROM products p
 		 LEFT JOIN categories c ON c.id = p.category_id
-		 WHERE p.id = $1`,
-		id,
-	).Scan(&p.ID, &p.CategoryID, &p.CategoryName, &p.Name, &p.Price, &p.Unit,
+		 WHERE p.id = $1 AND p.vendor_id = $2`,
+		id, vendorID,
+	).Scan(&p.ID, &p.VendorID, &p.CategoryID, &p.CategoryName, &p.Name, &p.Price, &p.Unit,
 		&p.ImageURL, &p.IsActive, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("get product by id: %w", err)
@@ -81,13 +82,14 @@ func ProductGetByID(pool *pgxpool.Pool, id string) (*models.Product, error) {
 	return p, nil
 }
 
-func ProductCreate(pool *pgxpool.Pool, p *models.Product) error {
+func ProductCreate(pool *pgxpool.Pool, vendorID string, p *models.Product) error {
+	p.VendorID = vendorID
 	err := pool.QueryRow(
 		context.Background(),
-		`INSERT INTO products (category_id, name, price, unit, image_url, is_active)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+		`INSERT INTO products (vendor_id, category_id, name, price, unit, image_url, is_active)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING id, created_at, updated_at`,
-		p.CategoryID, p.Name, p.Price, p.Unit, p.ImageURL, p.IsActive,
+		vendorID, p.CategoryID, p.Name, p.Price, p.Unit, p.ImageURL, p.IsActive,
 	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create product: %w", err)
@@ -95,7 +97,7 @@ func ProductCreate(pool *pgxpool.Pool, p *models.Product) error {
 	return nil
 }
 
-func ProductUpdate(pool *pgxpool.Pool, id string, fields map[string]interface{}) error {
+func ProductUpdate(pool *pgxpool.Pool, vendorID, id string, fields map[string]interface{}) error {
 	if len(fields) == 0 {
 		return nil
 	}
@@ -110,8 +112,8 @@ func ProductUpdate(pool *pgxpool.Pool, id string, fields map[string]interface{})
 		args = append(args, val)
 		i++
 	}
-	args = append(args, id)
-	query := fmt.Sprintf("UPDATE products SET %s WHERE id = $%d", setClauses, i)
+	args = append(args, id, vendorID)
+	query := fmt.Sprintf("UPDATE products SET %s WHERE id = $%d AND vendor_id = $%d", setClauses, i, i+1)
 	_, err := pool.Exec(context.Background(), query, args...)
 	if err != nil {
 		return fmt.Errorf("update product: %w", err)
@@ -119,25 +121,26 @@ func ProductUpdate(pool *pgxpool.Pool, id string, fields map[string]interface{})
 	return nil
 }
 
-func ProductDelete(pool *pgxpool.Pool, id string) error {
-	_, err := pool.Exec(context.Background(), `DELETE FROM products WHERE id = $1`, id)
+func ProductDelete(pool *pgxpool.Pool, vendorID, id string) error {
+	_, err := pool.Exec(context.Background(), `DELETE FROM products WHERE id = $1 AND vendor_id = $2`, id, vendorID)
 	if err != nil {
 		return fmt.Errorf("delete product: %w", err)
 	}
 	return nil
 }
 
-func ProductQuickCreate(pool *pgxpool.Pool, name string, price int) (*models.Product, error) {
+func ProductQuickCreate(pool *pgxpool.Pool, vendorID, name string, price int) (*models.Product, error) {
 	p := &models.Product{
-		Name:  name,
-		Price: price,
-		Unit:  "ชิ้น",
+		VendorID: vendorID,
+		Name:     name,
+		Price:    price,
+		Unit:     "ชิ้น",
 	}
 	err := pool.QueryRow(
 		context.Background(),
-		`INSERT INTO products (name, price, unit) VALUES ($1, $2, $3)
+		`INSERT INTO products (vendor_id, name, price, unit) VALUES ($1, $2, $3, $4)
 		 RETURNING id, created_at, updated_at`,
-		p.Name, p.Price, p.Unit,
+		vendorID, p.Name, p.Price, p.Unit,
 	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("quick create product: %w", err)

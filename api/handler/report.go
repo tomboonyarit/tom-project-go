@@ -17,8 +17,12 @@ func NewReportHandler(pool *pgxpool.Pool) *ReportHandler {
 	return &ReportHandler{pool: pool}
 }
 
-// DailyReport handles GET /api/reports/daily?date=2026-06-03
+func (h *ReportHandler) vendorID(r *http.Request) string {
+	return r.Context().Value(VendorIDKey).(string)
+}
+
 func (h *ReportHandler) DailyReport(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		errorJSON(w, http.StatusBadRequest, "date query parameter is required (YYYY-MM-DD)")
@@ -31,7 +35,7 @@ func (h *ReportHandler) DailyReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	report, err := repository.DailyReport(h.pool, date)
+	report, err := repository.DailyReport(h.pool, vendorID, date)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to generate daily report")
 		return
@@ -40,8 +44,8 @@ func (h *ReportHandler) DailyReport(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, report)
 }
 
-// MonthlyReport handles GET /api/reports/monthly?month=2026-06
 func (h *ReportHandler) MonthlyReport(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	month := r.URL.Query().Get("month")
 	if month == "" {
 		errorJSON(w, http.StatusBadRequest, "month query parameter is required (YYYY-MM)")
@@ -54,7 +58,7 @@ func (h *ReportHandler) MonthlyReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	report, err := repository.MonthlyReport(h.pool, month)
+	report, err := repository.MonthlyReport(h.pool, vendorID, month)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to generate monthly report")
 		return

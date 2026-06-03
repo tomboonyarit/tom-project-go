@@ -10,26 +10,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// OrderCreate inserts a new order with items inside a transaction.
-// It generates an order_no: POS-YYMMDD-NNNN where NNNN is the daily counter.
-func OrderCreate(pool *pgxpool.Pool, items []models.CreateOrderItem, discount int, note string, tags []string) (*models.Order, error) {
+func OrderCreate(pool *pgxpool.Pool, vendorID string, items []models.CreateOrderItem, discount int, note string, paymentMethod *string, tags []string) (*models.Order, error) {
 	ctx := context.Background()
 
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx) // no-op after commit
+	defer tx.Rollback(ctx)
 
-	// Generate order_no
 	now := time.Now()
-	datePrefix := now.Format("060102") // YYMMDD
+	datePrefix := now.Format("060102")
 
-	// Get current daily counter
 	var maxNo string
 	err = tx.QueryRow(ctx,
-		`SELECT order_no FROM orders WHERE order_no LIKE $1 ORDER BY order_no DESC LIMIT 1`,
-		"POS-"+datePrefix+"-%",
+		`SELECT order_no FROM orders WHERE order_no LIKE $1 AND vendor_id = $2 ORDER BY order_no DESC LIMIT 1`,
+		"POS-"+datePrefix+"-%", vendorID,
 	).Scan(&maxNo)
 	nextSeq := 1
 	if err == nil && len(maxNo) >= 15 {
@@ -38,7 +34,6 @@ func OrderCreate(pool *pgxpool.Pool, items []models.CreateOrderItem, discount in
 	}
 	orderNo := fmt.Sprintf("POS-%s-%04d", datePrefix, nextSeq)
 
-	// Calculate subtotal from items by reading product prices
 	subtotal := 0
 	type itemInfo struct {
 		ProductID string
@@ -49,7 +44,7 @@ func OrderCreate(pool *pgxpool.Pool, items []models.CreateOrderItem, discount in
 	for _, item := range items {
 		var price int
 		err := tx.QueryRow(ctx,
-			`SELECT price FROM products WHERE id = $1`, item.ProductID,
+			`SELECT price FROM products WHERE id = $1 AND vendor_id = $2`, item.ProductID, vendorID,
 		).Scan(&price)
 		if err != nil {
 			return nil, fmt.Errorf("get price for product %s: %w", item.ProductID, err)
@@ -64,7 +59,6 @@ func OrderCreate(pool *pgxpool.Pool, items []models.CreateOrderItem, discount in
 		total = 0
 	}
 
-	// Build tags string (comma-separated)
 	tagsStr := ""
 	if len(tags) > 0 {
 		tagsStr = tags[0]
@@ -73,31 +67,29 @@ func OrderCreate(pool *pgxpool.Pool, items []models.CreateOrderItem, discount in
 		}
 	}
 
-	// Insert order
 	order := &models.Order{}
 	err = tx.QueryRow(ctx,
-		`INSERT INTO orders (order_no, subtotal, discount, total, customer_note, tags)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 RETURNING id, order_no, subtotal, discount, total, status, payment_method, customer_note, tags, created_at, updated_at`,
-		orderNo, subtotal, discount, total, note, tagsStr,
-	).Scan(&order.ID, &order.OrderNo, &order.Subtotal, &order.Discount, &order.Total,
+		`INSERT INTO orders (vendor_id, order_no, subtotal, discount, total, customer_note, tags, payment_method)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		 RETURNING id, vendor_id, order_no, subtotal, discount, total, status, payment_method, customer_note, tags, created_at, updated_at`,
+		vendorID, orderNo, subtotal, discount, total, note, tagsStr, paymentMethod,
+	).Scan(&order.ID, &order.VendorID, &order.OrderNo, &order.Subtotal, &order.Discount, &order.Total,
 		&order.Status, &order.PaymentMethod, &order.CustomerNote, &order.Tags,
 		&order.CreatedAt, &order.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("insert order: %w", err)
 	}
 
-	// Insert order items
 	for i, item := range items {
 		info := itemInfos[i]
 		lineSubtotal := info.Price * item.Qty
 		var orderItem models.OrderItem
 		err := tx.QueryRow(ctx,
-			`INSERT INTO order_items (order_id, product_id, product_name, price, qty, subtotal, notes)
-			 VALUES ($1, $2, (SELECT name FROM products WHERE id = $2), $3, $4, $5, $6)
-			 RETURNING id, order_id, product_id, product_name, price, qty, subtotal, notes`,
-			order.ID, item.ProductID, info.Price, item.Qty, lineSubtotal, item.Notes,
-		).Scan(&orderItem.ID, &orderItem.OrderID, &orderItem.ProductID,
+			`INSERT INTO order_items (vendor_id, order_id, product_id, product_name, price, qty, subtotal, notes)
+			 VALUES ($1, $2, $3, (SELECT name FROM products WHERE id = $3 AND vendor_id = $1), $4, $5, $6, $7)
+			 RETURNING id, vendor_id, order_id, product_id, product_name, price, qty, subtotal, notes`,
+			vendorID, order.ID, item.ProductID, info.Price, item.Qty, lineSubtotal, item.Notes,
+		).Scan(&orderItem.ID, &orderItem.VendorID, &orderItem.OrderID, &orderItem.ProductID,
 			&orderItem.ProductName, &orderItem.Price, &orderItem.Qty,
 			&orderItem.Subtotal, &orderItem.Notes)
 		if err != nil {
@@ -113,14 +105,12 @@ func OrderCreate(pool *pgxpool.Pool, items []models.CreateOrderItem, discount in
 	return order, nil
 }
 
-// OrderList returns orders filtered by date prefix and/or status.
-// Also returns total count and total revenue for matching orders.
-func OrderList(pool *pgxpool.Pool, date *string, status *string) ([]models.Order, int, int, error) {
+func OrderList(pool *pgxpool.Pool, vendorID string, date *string, status *string) ([]models.Order, int, int, error) {
 	ctx := context.Background()
 
-	where := []string{"1=1"}
-	args := []interface{}{}
-	i := 1
+	where := []string{fmt.Sprintf("o.vendor_id = $%d", 1)}
+	args := []interface{}{vendorID}
+	i := 2
 
 	if date != nil && *date != "" {
 		where = append(where, fmt.Sprintf("o.created_at::date = $%d::date", i))
@@ -142,7 +132,6 @@ func OrderList(pool *pgxpool.Pool, date *string, status *string) ([]models.Order
 		}
 	}
 
-	// Count and sum (only non-cancelled for revenue)
 	countQuery := fmt.Sprintf(`SELECT COUNT(*), COALESCE(SUM(o.total), 0)
 		FROM orders o %s`, whereClause)
 	var totalOrders int
@@ -152,13 +141,12 @@ func OrderList(pool *pgxpool.Pool, date *string, status *string) ([]models.Order
 		return nil, 0, 0, fmt.Errorf("count orders: %w", err)
 	}
 
-	// Fetch orders
 	query := fmt.Sprintf(`
-		SELECT o.id, o.order_no, o.subtotal, o.discount, o.total,
+		SELECT o.id, o.vendor_id, o.order_no, o.subtotal, o.discount, o.total,
 		       o.status, o.payment_method, COALESCE(o.customer_note, ''),
 		       COALESCE(o.tags, ''), COALESCE(oi.cnt, 0), o.created_at, o.updated_at
 		FROM orders o
-		LEFT JOIN (SELECT order_id, COUNT(*) AS cnt FROM order_items GROUP BY order_id) oi
+		LEFT JOIN (SELECT order_id, COUNT(*) AS cnt FROM order_items WHERE vendor_id = $1 GROUP BY order_id) oi
 		       ON oi.order_id = o.id
 		%s
 		ORDER BY o.created_at DESC`, whereClause)
@@ -172,7 +160,7 @@ func OrderList(pool *pgxpool.Pool, date *string, status *string) ([]models.Order
 	var orders []models.Order
 	for rows.Next() {
 		var o models.Order
-		err := rows.Scan(&o.ID, &o.OrderNo, &o.Subtotal, &o.Discount, &o.Total,
+		err := rows.Scan(&o.ID, &o.VendorID, &o.OrderNo, &o.Subtotal, &o.Discount, &o.Total,
 			&o.Status, &o.PaymentMethod, &o.CustomerNote, &o.Tags, &o.ItemCount,
 			&o.CreatedAt, &o.UpdatedAt)
 		if err != nil {
@@ -187,30 +175,28 @@ func OrderList(pool *pgxpool.Pool, date *string, status *string) ([]models.Order
 	return orders, totalOrders, totalRevenue, nil
 }
 
-// OrderGetByID returns a single order with its items.
-func OrderGetByID(pool *pgxpool.Pool, id string) (*models.Order, error) {
+func OrderGetByID(pool *pgxpool.Pool, vendorID, id string) (*models.Order, error) {
 	ctx := context.Background()
 
 	o := &models.Order{}
 	err := pool.QueryRow(ctx,
-		`SELECT id, order_no, subtotal, discount, total,
+		`SELECT id, vendor_id, order_no, subtotal, discount, total,
 		        status, payment_method, COALESCE(customer_note, ''),
 		        COALESCE(tags, ''), created_at, updated_at
-		 FROM orders WHERE id = $1`,
-		id,
-	).Scan(&o.ID, &o.OrderNo, &o.Subtotal, &o.Discount, &o.Total,
+		 FROM orders WHERE id = $1 AND vendor_id = $2`,
+		id, vendorID,
+	).Scan(&o.ID, &o.VendorID, &o.OrderNo, &o.Subtotal, &o.Discount, &o.Total,
 		&o.Status, &o.PaymentMethod, &o.CustomerNote, &o.Tags,
 		&o.CreatedAt, &o.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("get order: %w", err)
 	}
 
-	// Fetch items
 	rows, err := pool.Query(ctx,
-		`SELECT id, order_id, product_id, product_name, price, qty, subtotal, COALESCE(notes, '')
-		 FROM order_items WHERE order_id = $1
+		`SELECT id, vendor_id, order_id, product_id, product_name, price, qty, subtotal, COALESCE(notes, '')
+		 FROM order_items WHERE order_id = $1 AND vendor_id = $2
 		 ORDER BY id`,
-		id,
+		id, vendorID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("get order items: %w", err)
@@ -219,7 +205,7 @@ func OrderGetByID(pool *pgxpool.Pool, id string) (*models.Order, error) {
 
 	for rows.Next() {
 		var item models.OrderItem
-		err := rows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductName,
+		err := rows.Scan(&item.ID, &item.VendorID, &item.OrderID, &item.ProductID, &item.ProductName,
 			&item.Price, &item.Qty, &item.Subtotal, &item.Notes)
 		if err != nil {
 			return nil, fmt.Errorf("scan order item: %w", err)
@@ -233,8 +219,6 @@ func OrderGetByID(pool *pgxpool.Pool, id string) (*models.Order, error) {
 	return o, nil
 }
 
-// validStatusTransitions defines allowed status changes.
-// map[from][]to
 var validStatusTransitions = map[string][]string{
 	"new":       {"preparing", "cancelled"},
 	"preparing": {"paid", "cancelled"},
@@ -243,18 +227,15 @@ var validStatusTransitions = map[string][]string{
 	"cancelled": {},
 }
 
-// OrderUpdateStatus validates and updates order status.
-func OrderUpdateStatus(pool *pgxpool.Pool, id string, newStatus string) error {
+func OrderUpdateStatus(pool *pgxpool.Pool, vendorID, id string, newStatus string) error {
 	ctx := context.Background()
 
-	// Get current status
 	var currentStatus string
-	err := pool.QueryRow(ctx, `SELECT status FROM orders WHERE id = $1`, id).Scan(&currentStatus)
+	err := pool.QueryRow(ctx, `SELECT status FROM orders WHERE id = $1 AND vendor_id = $2`, id, vendorID).Scan(&currentStatus)
 	if err != nil {
 		return fmt.Errorf("get order status: %w", err)
 	}
 
-	// Validate transition
 	allowed, ok := validStatusTransitions[currentStatus]
 	if !ok {
 		return fmt.Errorf("invalid current status: %s", currentStatus)
@@ -270,25 +251,23 @@ func OrderUpdateStatus(pool *pgxpool.Pool, id string, newStatus string) error {
 		return fmt.Errorf("cannot transition from %s to %s", currentStatus, newStatus)
 	}
 
-	_, err = pool.Exec(ctx, `UPDATE orders SET status = $1 WHERE id = $2`, newStatus, id)
+	_, err = pool.Exec(ctx, `UPDATE orders SET status = $1 WHERE id = $2 AND vendor_id = $3`, newStatus, id, vendorID)
 	if err != nil {
 		return fmt.Errorf("update order status: %w", err)
 	}
 	return nil
 }
 
-// OrderUpdatePayment updates the payment method on an order.
-func OrderUpdatePayment(pool *pgxpool.Pool, id string, paymentMethod string) error {
+func OrderUpdatePayment(pool *pgxpool.Pool, vendorID, id string, paymentMethod string) error {
 	ctx := context.Background()
 
-	// Validate payment method
 	if paymentMethod != "cash" && paymentMethod != "promptpay" {
 		return fmt.Errorf("invalid payment method: %s (must be cash or promptpay)", paymentMethod)
 	}
 
 	_, err := pool.Exec(ctx,
-		`UPDATE orders SET payment_method = $1 WHERE id = $2`,
-		paymentMethod, id,
+		`UPDATE orders SET payment_method = $1 WHERE id = $2 AND vendor_id = $3`,
+		paymentMethod, id, vendorID,
 	)
 	if err != nil {
 		return fmt.Errorf("update payment method: %w", err)
@@ -296,10 +275,9 @@ func OrderUpdatePayment(pool *pgxpool.Pool, id string, paymentMethod string) err
 	return nil
 }
 
-// OrderUpdateTags updates the tags (comma-separated) on an order.
-func OrderUpdateTags(pool *pgxpool.Pool, id string, tags string) error {
+func OrderUpdateTags(pool *pgxpool.Pool, vendorID, id string, tags string) error {
 	_, err := pool.Exec(context.Background(),
-		`UPDATE orders SET tags = $1 WHERE id = $2`, tags, id)
+		`UPDATE orders SET tags = $1 WHERE id = $2 AND vendor_id = $3`, tags, id, vendorID)
 	if err != nil {
 		return fmt.Errorf("update tags: %w", err)
 	}

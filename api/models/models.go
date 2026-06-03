@@ -23,18 +23,20 @@ type Vendor struct {
 
 type Category struct {
 	ID           string    `json:"id"`
+	VendorID     string    `json:"vendor_id"`
 	Name         string    `json:"name"`
 	SortOrder    int       `json:"sort_order"`
 	CreatedAt    time.Time `json:"created_at"`
-	ProductCount int       `json:"product_count,omitempty"` // for list responses
+	ProductCount int       `json:"product_count,omitempty"`
 }
 
 type Product struct {
 	ID           string    `json:"id"`
+	VendorID     string    `json:"vendor_id"`
 	CategoryID   *string   `json:"category_id"`
-	CategoryName string    `json:"category_name,omitempty"` // joined query
+	CategoryName string    `json:"category_name,omitempty"`
 	Name         string    `json:"name"`
-	Price        int       `json:"price"` // satang
+	Price        int       `json:"price"`
 	Unit         string    `json:"unit"`
 	ImageURL     string    `json:"image_url"`
 	IsActive     bool      `json:"is_active"`
@@ -44,6 +46,7 @@ type Product struct {
 
 type Order struct {
 	ID            string       `json:"id"`
+	VendorID      string       `json:"vendor_id"`
 	OrderNo       string       `json:"order_no"`
 	Subtotal      int          `json:"subtotal"`
 	Discount      int          `json:"discount"`
@@ -51,31 +54,35 @@ type Order struct {
 	Status        string       `json:"status"`
 	PaymentMethod *string      `json:"payment_method"`
 	CustomerNote  string       `json:"customer_note"`
-	Tags          string       `json:"tags"` // comma-separated tag names
-	ItemCount     int          `json:"item_count,omitempty"` // for list responses
+	Tags          string       `json:"tags"`
+	ItemCount     int          `json:"item_count,omitempty"`
 	Items         []OrderItem  `json:"items,omitempty"`
 	CreatedAt     time.Time    `json:"created_at"`
 	UpdatedAt     time.Time    `json:"updated_at"`
 }
 
 type OrderItem struct {
-	ID          string `json:"id"`
-	OrderID     string `json:"order_id"`
+	ID          string  `json:"id"`
+	VendorID    string  `json:"vendor_id"`
+	OrderID     string  `json:"order_id"`
 	ProductID   *string `json:"product_id"`
-	ProductName string `json:"product_name"`
-	Price       int    `json:"price"`
-	Qty         int    `json:"qty"`
-	Subtotal    int    `json:"subtotal"`
-	Notes       string `json:"notes"`
+	ProductName string  `json:"product_name"`
+	Price       int     `json:"price"`
+	Qty         int     `json:"qty"`
+	Subtotal    int     `json:"subtotal"`
+	Notes       string  `json:"notes"`
 }
 
 type CustomerTag struct {
 	ID        string    `json:"id"`
+	VendorID  string    `json:"vendor_id"`
 	Name      string    `json:"name"`
 	SortOrder int       `json:"sort_order"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// ============================================================================
+// Report Types
 // ============================================================================
 // Report Types
 // ============================================================================
@@ -140,10 +147,11 @@ type AuthResponse struct {
 }
 
 type CreateOrderRequest struct {
-	Items        []CreateOrderItem `json:"items"`
-	Discount     int               `json:"discount"`
-	CustomerNote string            `json:"customer_note"`
-	Tags         []string          `json:"tags"` // tag names
+	Items         []CreateOrderItem `json:"items"`
+	Discount      int               `json:"discount"`
+	CustomerNote  string            `json:"customer_note"`
+	PaymentMethod *string           `json:"payment_method"`
+	Tags          []string          `json:"tags"`
 }
 
 type CreateOrderItem struct {

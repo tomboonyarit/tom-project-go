@@ -18,10 +18,15 @@ func NewProductHandler(pool *pgxpool.Pool) *ProductHandler {
 	return &ProductHandler{pool: pool}
 }
 
-// List handles GET /api/products
+func (h *ProductHandler) vendorID(r *http.Request) string {
+	return r.Context().Value(VendorIDKey).(string)
+}
+
 func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	filter := repository.ProductFilter{
-		Search: r.URL.Query().Get("search"),
+		VendorID: vendorID,
+		Search:   r.URL.Query().Get("search"),
 	}
 	if catID := r.URL.Query().Get("category_id"); catID != "" {
 		filter.CategoryID = &catID
@@ -36,8 +41,8 @@ func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, products)
 }
 
-// Create handles POST /api/products
 func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	var req models.CreateProductRequest
 	if err := readJSON(r, &req); err != nil {
 		errorJSON(w, http.StatusBadRequest, "invalid request body")
@@ -70,7 +75,7 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		IsActive:   isActive,
 	}
 
-	if err := repository.ProductCreate(h.pool, p); err != nil {
+	if err := repository.ProductCreate(h.pool, vendorID, p); err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to create product")
 		return
 	}
@@ -78,8 +83,8 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, p)
 }
 
-// QuickCreate handles POST /api/products/quick
 func (h *ProductHandler) QuickCreate(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	var req models.QuickCreateProductRequest
 	if err := readJSON(r, &req); err != nil {
 		errorJSON(w, http.StatusBadRequest, "invalid request body")
@@ -96,7 +101,7 @@ func (h *ProductHandler) QuickCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err := repository.ProductQuickCreate(h.pool, req.Name, req.Price)
+	p, err := repository.ProductQuickCreate(h.pool, vendorID, req.Name, req.Price)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to create product")
 		return
@@ -105,8 +110,8 @@ func (h *ProductHandler) QuickCreate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, p)
 }
 
-// Update handles PUT /api/products/{id}
 func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	id := r.PathValue("id")
 	if id == "" {
 		errorJSON(w, http.StatusBadRequest, "missing product id")
@@ -139,13 +144,12 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		fields["is_active"] = *req.IsActive
 	}
 
-	if err := repository.ProductUpdate(h.pool, id, fields); err != nil {
+	if err := repository.ProductUpdate(h.pool, vendorID, id, fields); err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to update product")
 		return
 	}
 
-	// Return updated product
-	product, err := repository.ProductGetByID(h.pool, id)
+	product, err := repository.ProductGetByID(h.pool, vendorID, id)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, "product updated but failed to fetch")
 		return
@@ -154,15 +158,15 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, product)
 }
 
-// Delete handles DELETE /api/products/{id}
 func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	id := r.PathValue("id")
 	if id == "" {
 		errorJSON(w, http.StatusBadRequest, "missing product id")
 		return
 	}
 
-	if err := repository.ProductDelete(h.pool, id); err != nil {
+	if err := repository.ProductDelete(h.pool, vendorID, id); err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to delete product")
 		return
 	}

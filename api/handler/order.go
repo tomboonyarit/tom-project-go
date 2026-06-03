@@ -18,8 +18,12 @@ func NewOrderHandler(pool *pgxpool.Pool) *OrderHandler {
 	return &OrderHandler{pool: pool}
 }
 
-// Create handles POST /api/orders
+func (h *OrderHandler) vendorID(r *http.Request) string {
+	return r.Context().Value(VendorIDKey).(string)
+}
+
 func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	var req models.CreateOrderRequest
 	if err := readJSON(r, &req); err != nil {
 		errorJSON(w, http.StatusBadRequest, "invalid request body")
@@ -42,7 +46,7 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	order, err := repository.OrderCreate(h.pool, req.Items, req.Discount, req.CustomerNote, req.Tags)
+	order, err := repository.OrderCreate(h.pool, vendorID, req.Items, req.Discount, req.CustomerNote, req.PaymentMethod, req.Tags)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to create order")
 		return
@@ -51,8 +55,8 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, order)
 }
 
-// List handles GET /api/orders
 func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	dateParam := r.URL.Query().Get("date")
 	statusParam := r.URL.Query().Get("status")
 
@@ -65,7 +69,7 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 		status = &statusParam
 	}
 
-	orders, totalOrders, totalRevenue, err := repository.OrderList(h.pool, date, status)
+	orders, totalOrders, totalRevenue, err := repository.OrderList(h.pool, vendorID, date, status)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to list orders")
 		return
@@ -78,15 +82,15 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetByID handles GET /api/orders/{id}
 func (h *OrderHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	id := r.PathValue("id")
 	if id == "" {
 		errorJSON(w, http.StatusBadRequest, "missing order id")
 		return
 	}
 
-	order, err := repository.OrderGetByID(h.pool, id)
+	order, err := repository.OrderGetByID(h.pool, vendorID, id)
 	if err != nil {
 		errorJSON(w, http.StatusNotFound, "order not found")
 		return
@@ -95,8 +99,8 @@ func (h *OrderHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, order)
 }
 
-// UpdateTags handles PUT /api/orders/{id}/tags
 func (h *OrderHandler) UpdateTags(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	id := r.PathValue("id")
 	var req struct {
 		Tags []string `json:"tags"`
@@ -106,15 +110,15 @@ func (h *OrderHandler) UpdateTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tagsStr := strings.Join(req.Tags, ",")
-	if err := repository.OrderUpdateTags(h.pool, id, tagsStr); err != nil {
+	if err := repository.OrderUpdateTags(h.pool, vendorID, id, tagsStr); err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to update tags")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"tags": tagsStr})
 }
 
-// UpdateStatus handles PUT /api/orders/{id}/status
 func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	id := r.PathValue("id")
 	if id == "" {
 		errorJSON(w, http.StatusBadRequest, "missing order id")
@@ -134,13 +138,12 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := repository.OrderUpdateStatus(h.pool, id, req.Status); err != nil {
+	if err := repository.OrderUpdateStatus(h.pool, vendorID, id, req.Status); err != nil {
 		errorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// Fetch updated order
-	order, err := repository.OrderGetByID(h.pool, id)
+	order, err := repository.OrderGetByID(h.pool, vendorID, id)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, "status updated but failed to fetch order")
 		return
@@ -149,8 +152,8 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, order)
 }
 
-// UpdatePayment handles PUT /api/orders/{id}/payment
 func (h *OrderHandler) UpdatePayment(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
 	id := r.PathValue("id")
 	if id == "" {
 		errorJSON(w, http.StatusBadRequest, "missing order id")
@@ -163,13 +166,12 @@ func (h *OrderHandler) UpdatePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := repository.OrderUpdatePayment(h.pool, id, req.PaymentMethod); err != nil {
+	if err := repository.OrderUpdatePayment(h.pool, vendorID, id, req.PaymentMethod); err != nil {
 		errorJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// Fetch updated order
-	order, err := repository.OrderGetByID(h.pool, id)
+	order, err := repository.OrderGetByID(h.pool, vendorID, id)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, "payment updated but failed to fetch order")
 		return
