@@ -1,44 +1,46 @@
 package config
 
 import (
-	"bufio"
 	"log"
 	"os"
 	"strings"
 )
 
-// Config holds application configuration loaded from environment variables.
+// Config holds all application configuration loaded from environment / .env file.
 type Config struct {
 	Port        string
 	DatabaseURL string
 	JWTSecret   string
 }
 
-// Load reads configuration from environment variables with sensible defaults.
-// It also attempts to load variables from a .env file if present.
+// Load reads .env if present, then os.Getenv for each required key with defaults.
 func Load() *Config {
 	loadDotEnv()
 
-	return &Config{
+	cfg := &Config{
 		Port:        getEnv("PORT", "8080"),
 		DatabaseURL: getEnv("DATABASE_URL", ""),
-		JWTSecret:   getEnv("JWT_SECRET", "change-me-in-production"),
+		JWTSecret:   getEnv("JWT_SECRET", ""),
 	}
+	if cfg.DatabaseURL == "" {
+		log.Fatal("DATABASE_URL is required")
+	}
+	if cfg.JWTSecret == "" {
+		log.Fatal("JWT_SECRET is required")
+	}
+	return cfg
 }
 
-// loadDotEnv reads key=value pairs from a .env file and sets them as
-// environment variables (only if not already set).
+// loadDotEnv reads .env file lines (KEY=VALUE) and calls os.Setenv.
 func loadDotEnv() {
-	file, err := os.Open(".env")
+	data, err := os.ReadFile(".env")
 	if err != nil {
 		// .env file is optional
 		return
 	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
 		// Skip empty lines and comments
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -49,16 +51,15 @@ func loadDotEnv() {
 		}
 		key := strings.TrimSpace(parts[0])
 		val := strings.TrimSpace(parts[1])
-		if key != "" && os.Getenv(key) == "" {
+		if key != "" {
 			os.Setenv(key, val)
-			log.Printf("Loaded %s from .env", key)
 		}
 	}
 }
 
 func getEnv(key, fallback string) string {
-	if val := os.Getenv(key); val != "" {
-		return val
+	if v := os.Getenv(key); v != "" {
+		return v
 	}
 	return fallback
 }

@@ -3,65 +3,61 @@ package db
 import (
 	"context"
 	"fmt"
-	"log"
-	"time"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Pool is the global database connection pool.
-var Pool *pgxpool.Pool
-
-// Connect initializes the database connection pool with the given PostgreSQL URL.
-// It pings the database to verify connectivity and configures pool settings.
-func Connect(ctx context.Context, databaseURL string) error {
-	if databaseURL == "" {
-		return fmt.Errorf("DATABASE_URL is not set")
-	}
-
-	poolConfig, err := pgxpool.ParseConfig(databaseURL)
+// Connect creates a new pgxpool connection pool.
+func Connect(databaseURL string) (*pgxpool.Pool, error) {
+	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
-		return fmt.Errorf("failed to parse database URL: %w", err)
+		return nil, fmt.Errorf("parse database url: %w", err)
 	}
 
-	// Connection pool settings
-	poolConfig.MaxConns = 20
-	poolConfig.MinConns = 2
-	poolConfig.MaxConnLifetime = 30 * time.Minute
-	poolConfig.MaxConnIdleTime = 5 * time.Minute
-	poolConfig.HealthCheckPeriod = 1 * time.Minute
-
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	pool, err := pgxpool.NewWithConfig(context.Background(), cfg)
 	if err != nil {
-		return fmt.Errorf("failed to create connection pool: %w", err)
+		return nil, fmt.Errorf("create connection pool: %w", err)
 	}
 
-	// Verify connectivity
-	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	if err := pool.Ping(pingCtx); err != nil {
-		pool.Close()
-		return fmt.Errorf("failed to ping database: %w", err)
+	if err := pool.Ping(context.Background()); err != nil {
+		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
-	Pool = pool
-	log.Println("Database connected successfully")
+	return pool, nil
+}
+
+// RunMigrations reads all *.sql files from db/migrations/ sorted by name
+// and executes each against the pool inside a transaction.
+func RunMigrations(pool *pgxpool.Pool) error {
+	entries, err := os.ReadDir("db/migrations")
+	if err != nil {
+		return fmt.Errorf("read migrations dir: %w", err)
+	}
+
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			files = append(files, e.Name())
+		}
+	}
+	sort.Strings(files)
+
+	for _, f := range files {
+		path := filepath.Join("db/migrations", f)
+		sql, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read migration %s: %w", f, err)
+		}
+
+		_, err = pool.Exec(context.Background(), string(sql))
+		if err != nil {
+			return fmt.Errorf("exec migration %s: %w", f, err)
+		}
+		fmt.Printf("migration applied: %s\n", f)
+	}
 	return nil
-}
-
-// Close gracefully shuts down the connection pool.
-func Close() {
-	if Pool != nil {
-		Pool.Close()
-		log.Println("Database connection pool closed")
-	}
-}
-
-// HealthCheck verifies the database is still reachable.
-func HealthCheck(ctx context.Context) error {
-	if Pool == nil {
-		return fmt.Errorf("database pool is nil")
-	}
-	return Pool.Ping(ctx)
 }

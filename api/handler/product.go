@@ -2,112 +2,170 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"api/models"
 	"api/repository"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type ProductHandler struct {
-	productRepo  *repository.ProductRepo
-	categoryRepo *repository.CategoryRepo
+	pool *pgxpool.Pool
 }
 
-func NewProductHandler(productRepo *repository.ProductRepo, categoryRepo *repository.CategoryRepo) *ProductHandler {
-	return &ProductHandler{
-		productRepo:  productRepo,
-		categoryRepo: categoryRepo,
+func NewProductHandler(pool *pgxpool.Pool) *ProductHandler {
+	return &ProductHandler{pool: pool}
+}
+
+// List handles GET /api/products
+func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
+	filter := repository.ProductFilter{
+		Search: r.URL.Query().Get("search"),
 	}
-}
+	if catID := r.URL.Query().Get("category_id"); catID != "" {
+		filter.CategoryID = &catID
+	}
 
-// --- Categories ---
-
-// ListCategories handles GET /api/categories
-func (h *ProductHandler) ListCategories(w http.ResponseWriter, r *http.Request) {
-	categories, err := h.categoryRepo.List(r.Context(), true, nil)
+	products, err := repository.ProductList(h.pool, filter)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Database error")
+		errorJSON(w, http.StatusInternalServerError, "failed to list products")
 		return
 	}
-	writeJSON(w, http.StatusOK, categories)
+
+	writeJSON(w, http.StatusOK, products)
 }
 
-// --- Products ---
-
-// ListByBooth handles GET /api/booths/{boothId}/products
-func (h *ProductHandler) ListByBooth(w http.ResponseWriter, r *http.Request) {
-	boothID := r.PathValue("boothId")
-	params := parsePagination(r)
-	availableOnly := parseQueryParam(r, "available") != "false"
-
-	products, total, err := h.productRepo.ListByBooth(r.Context(), boothID, params, availableOnly)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Database error")
+// Create handles POST /api/products
+func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
+	var req models.CreateProductRequest
+	if err := readJSON(r, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	writeJSON(w, http.StatusOK, models.NewPaginatedResponse(products, total, params))
+
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		errorJSON(w, http.StatusBadRequest, "product name is required")
+		return
+	}
+	if req.Price <= 0 {
+		errorJSON(w, http.StatusBadRequest, "price must be greater than 0")
+		return
+	}
+	if req.Unit == "" {
+		req.Unit = "ชิ้น"
+	}
+	isActive := true
+	if req.IsActive != nil {
+		isActive = *req.IsActive
+	}
+
+	p := &models.Product{
+		CategoryID: req.CategoryID,
+		Name:       req.Name,
+		Price:      req.Price,
+		Unit:       req.Unit,
+		ImageURL:   req.ImageURL,
+		IsActive:   isActive,
+	}
+
+	if err := repository.ProductCreate(h.pool, p); err != nil {
+		errorJSON(w, http.StatusInternalServerError, "failed to create product")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, p)
 }
 
-// GetProduct handles GET /api/products/{id}
-func (h *ProductHandler) GetProduct(w http.ResponseWriter, r *http.Request) {
+// QuickCreate handles POST /api/products/quick
+func (h *ProductHandler) QuickCreate(w http.ResponseWriter, r *http.Request) {
+	var req models.QuickCreateProductRequest
+	if err := readJSON(r, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		errorJSON(w, http.StatusBadRequest, "product name is required")
+		return
+	}
+	if req.Price <= 0 {
+		errorJSON(w, http.StatusBadRequest, "price must be greater than 0")
+		return
+	}
+
+	p, err := repository.ProductQuickCreate(h.pool, req.Name, req.Price)
+	if err != nil {
+		errorJSON(w, http.StatusInternalServerError, "failed to create product")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, p)
+}
+
+// Update handles PUT /api/products/{id}
+func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	product, err := h.productRepo.FindByID(r.Context(), id)
+	if id == "" {
+		errorJSON(w, http.StatusBadRequest, "missing product id")
+		return
+	}
+
+	var req models.UpdateProductRequest
+	if err := readJSON(r, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	fields := map[string]interface{}{}
+	if req.Name != "" {
+		fields["name"] = req.Name
+	}
+	if req.Price > 0 {
+		fields["price"] = req.Price
+	}
+	if req.Unit != "" {
+		fields["unit"] = req.Unit
+	}
+	if req.CategoryID != nil {
+		fields["category_id"] = *req.CategoryID
+	}
+	if req.ImageURL != "" {
+		fields["image_url"] = req.ImageURL
+	}
+	if req.IsActive != nil {
+		fields["is_active"] = *req.IsActive
+	}
+
+	if err := repository.ProductUpdate(h.pool, id, fields); err != nil {
+		errorJSON(w, http.StatusInternalServerError, "failed to update product")
+		return
+	}
+
+	// Return updated product
+	product, err := repository.ProductGetByID(h.pool, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Database error")
+		errorJSON(w, http.StatusInternalServerError, "product updated but failed to fetch")
 		return
 	}
-	if product == nil {
-		writeError(w, http.StatusNotFound, "not_found", "Product not found")
-		return
-	}
+
 	writeJSON(w, http.StatusOK, product)
 }
 
-// CreateProduct handles POST /api/booths/{boothId}/products
-func (h *ProductHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {
-	var input models.CreateProductInput
-	if err := decodeJSON(r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "bad_request", "Invalid request body")
-		return
-	}
-
-	input.BoothID = r.PathValue("boothId")
-	userID := GetUserID(r)
-
-	product, err := h.productRepo.Create(r.Context(), input, userID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Failed to create product")
-		return
-	}
-	writeJSON(w, http.StatusCreated, product)
-}
-
-// UpdateProduct handles PUT /api/products/{id}
-func (h *ProductHandler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
+// Delete handles DELETE /api/products/{id}
+func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	var input models.UpdateProductInput
-	if err := decodeJSON(r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+	if id == "" {
+		errorJSON(w, http.StatusBadRequest, "missing product id")
 		return
 	}
 
-	product, err := h.productRepo.Update(r.Context(), id, input)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Failed to update product")
+	if err := repository.ProductDelete(h.pool, id); err != nil {
+		errorJSON(w, http.StatusInternalServerError, "failed to delete product")
 		return
 	}
-	if product == nil {
-		writeError(w, http.StatusNotFound, "not_found", "Product not found")
-		return
-	}
-	writeJSON(w, http.StatusOK, product)
-}
 
-// DeleteProduct handles DELETE /api/products/{id}
-func (h *ProductHandler) DeleteProduct(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	if err := h.productRepo.Delete(r.Context(), id); err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Failed to delete product")
-		return
-	}
-	writeMessage(w, http.StatusOK, "Product deleted")
+	writeJSON(w, http.StatusOK, map[string]string{"message": "product deleted"})
 }

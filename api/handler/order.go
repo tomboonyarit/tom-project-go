@@ -2,144 +2,178 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"api/models"
 	"api/repository"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type OrderHandler struct {
-	orderRepo      *repository.OrderRepo
-	orderItemRepo  *repository.OrderItemRepo
-	orderHistRepo  *repository.OrderHistoryRepo
+	pool *pgxpool.Pool
 }
 
-func NewOrderHandler(
-	orderRepo *repository.OrderRepo,
-	orderItemRepo *repository.OrderItemRepo,
-	orderHistRepo *repository.OrderHistoryRepo,
-) *OrderHandler {
-	return &OrderHandler{
-		orderRepo:     orderRepo,
-		orderItemRepo: orderItemRepo,
-		orderHistRepo: orderHistRepo,
-	}
+func NewOrderHandler(pool *pgxpool.Pool) *OrderHandler {
+	return &OrderHandler{pool: pool}
 }
 
 // Create handles POST /api/orders
 func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var input models.CreateOrderInput
-	if err := decodeJSON(r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+	var req models.CreateOrderRequest
+	if err := readJSON(r, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if len(input.Items) == 0 {
-		writeError(w, http.StatusBadRequest, "bad_request", "At least one item is required")
+	if len(req.Items) == 0 {
+		errorJSON(w, http.StatusBadRequest, "order must have at least one item")
 		return
 	}
 
-	userID := GetUserID(r)
-	order, err := h.orderRepo.Create(r.Context(), input, userID)
+	for _, item := range req.Items {
+		if item.ProductID == "" {
+			errorJSON(w, http.StatusBadRequest, "each item must have a product_id")
+			return
+		}
+		if item.Qty <= 0 {
+			errorJSON(w, http.StatusBadRequest, "item quantity must be greater than 0")
+			return
+		}
+	}
+
+	order, err := repository.OrderCreate(h.pool, req.Items, req.Discount, req.CustomerNote, req.Tags)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Failed to create order")
+		errorJSON(w, http.StatusInternalServerError, "failed to create order")
 		return
 	}
+
 	writeJSON(w, http.StatusCreated, order)
 }
 
 // List handles GET /api/orders
 func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
-	params := parsePagination(r)
-	role := GetUserRole(r)
-	userID := GetUserID(r)
+	dateParam := r.URL.Query().Get("date")
+	statusParam := r.URL.Query().Get("status")
 
-	var orders []models.Order
-	var total int
-	var err error
-
-	if role == string(models.UserRoleVendor) || role == string(models.UserRoleAdmin) {
-		// For vendors/admins, filter by booth if specified
-		boothID := parseQueryParam(r, "booth_id")
-		if boothID != "" {
-			orders, total, err = h.orderRepo.ListByBooth(r.Context(), boothID, params)
-		} else {
-			// List all orders for the user's booths (simplified: just by customer for now)
-			orders, total, err = h.orderRepo.ListByCustomer(r.Context(), userID, params)
-		}
-	} else {
-		orders, total, err = h.orderRepo.ListByCustomer(r.Context(), userID, params)
+	var date *string
+	var status *string
+	if dateParam != "" {
+		date = &dateParam
+	}
+	if statusParam != "" {
+		status = &statusParam
 	}
 
+	orders, totalOrders, totalRevenue, err := repository.OrderList(h.pool, date, status)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Database error")
+		errorJSON(w, http.StatusInternalServerError, "failed to list orders")
 		return
 	}
-	writeJSON(w, http.StatusOK, models.NewPaginatedResponse(orders, total, params))
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"orders":        orders,
+		"total_orders":  totalOrders,
+		"total_revenue": totalRevenue,
+	})
 }
 
 // GetByID handles GET /api/orders/{id}
 func (h *OrderHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	order, err := h.orderRepo.FindByID(r.Context(), id)
+	if id == "" {
+		errorJSON(w, http.StatusBadRequest, "missing order id")
+		return
+	}
+
+	order, err := repository.OrderGetByID(h.pool, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Database error")
-		return
-	}
-	if order == nil {
-		writeError(w, http.StatusNotFound, "not_found", "Order not found")
+		errorJSON(w, http.StatusNotFound, "order not found")
 		return
 	}
 
-	// Fetch items and history
-	items, _ := h.orderItemRepo.ListByOrder(r.Context(), id)
-	history, _ := h.orderHistRepo.ListByOrder(r.Context(), id)
+	writeJSON(w, http.StatusOK, order)
+}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"order":   order,
-		"items":   items,
-		"history": history,
-	})
+// UpdateTags handles PUT /api/orders/{id}/tags
+func (h *OrderHandler) UpdateTags(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Tags []string `json:"tags"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	tagsStr := strings.Join(req.Tags, ",")
+	if err := repository.OrderUpdateTags(h.pool, id, tagsStr); err != nil {
+		errorJSON(w, http.StatusInternalServerError, "failed to update tags")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"tags": tagsStr})
 }
 
 // UpdateStatus handles PUT /api/orders/{id}/status
 func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	var input models.UpdateOrderStatusInput
-	if err := decodeJSON(r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+	if id == "" {
+		errorJSON(w, http.StatusBadRequest, "missing order id")
 		return
 	}
 
-	userID := GetUserID(r)
-	order, err := h.orderRepo.UpdateStatus(r.Context(), id, input, &userID)
+	var req models.UpdateStatusRequest
+	if err := readJSON(r, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	req.Status = strings.TrimSpace(req.Status)
+	validStatuses := map[string]bool{"new": true, "preparing": true, "paid": true, "completed": true, "cancelled": true}
+	if !validStatuses[req.Status] {
+		errorJSON(w, http.StatusBadRequest, "invalid status: must be one of new, preparing, paid, completed, cancelled")
+		return
+	}
+
+	if err := repository.OrderUpdateStatus(h.pool, id, req.Status); err != nil {
+		errorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Fetch updated order
+	order, err := repository.OrderGetByID(h.pool, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Failed to update order status")
+		errorJSON(w, http.StatusInternalServerError, "status updated but failed to fetch order")
 		return
 	}
-	if order == nil {
-		writeError(w, http.StatusNotFound, "not_found", "Order not found")
-		return
-	}
+
 	writeJSON(w, http.StatusOK, order)
 }
 
 // UpdatePayment handles PUT /api/orders/{id}/payment
 func (h *OrderHandler) UpdatePayment(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	var input models.UpdateOrderPaymentInput
-	if err := decodeJSON(r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+	if id == "" {
+		errorJSON(w, http.StatusBadRequest, "missing order id")
 		return
 	}
 
-	order, err := h.orderRepo.UpdatePayment(r.Context(), id, input)
+	var req models.UpdatePaymentRequest
+	if err := readJSON(r, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if err := repository.OrderUpdatePayment(h.pool, id, req.PaymentMethod); err != nil {
+		errorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	// Fetch updated order
+	order, err := repository.OrderGetByID(h.pool, id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Failed to update payment")
+		errorJSON(w, http.StatusInternalServerError, "payment updated but failed to fetch order")
 		return
 	}
-	if order == nil {
-		writeError(w, http.StatusNotFound, "not_found", "Order not found")
-		return
-	}
+
 	writeJSON(w, http.StatusOK, order)
 }
