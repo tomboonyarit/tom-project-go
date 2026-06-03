@@ -273,7 +273,7 @@ export interface MonthlyReport {
     count: number;
     total: number;
   }>;
-  daily: Array<{
+  daily_breakdown: Array<{
     date: string;
     orders: number;
     revenue: number;

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
+import MaekaLogo from "@/components/MaekaLogo";
 
 export default function RegisterPage() {
   const [phone, setPhone] = useState("");
@@ -59,16 +60,11 @@ export default function RegisterPage() {
       <div className="w-full max-w-sm relative z-10 animate-fade-in-up">
         <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-xl shadow-orange-900/10 p-8 border border-white/20">
           <div className="text-center mb-8 animate-fade-in-down">
-            <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-500/25">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} className="w-8 h-8">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
+            <div className="flex justify-center mb-4">
+              <MaekaLogo size={48} showText={false} />
             </div>
             <h1 className="text-2xl font-bold text-gray-800">สมัครสมาชิก</h1>
-            <p className="text-sm text-gray-400 mt-1">สร้างบัญชีใหม่</p>
+            <p className="text-sm text-gray-400 mt-1">MaekaOS</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">

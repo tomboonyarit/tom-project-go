@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/lib/auth";
+import MaekaLogo from "@/components/MaekaLogo";
 
 const navItems = [
   {
@@ -61,6 +63,7 @@ const navItems = [
 
 export default function BottomNavBar() {
   const pathname = usePathname();
+  const { vendor } = useAuth();
 
   if (pathname === "/login" || pathname === "/register") return null;
 
@@ -73,11 +76,14 @@ export default function BottomNavBar() {
     <>
       {/* ── Desktop Sidebar ── */}
       <aside className="hidden md:flex md:flex-col md:w-64 md:h-screen md:fixed md:left-0 md:top-0 md:bg-white md:border-r md:border-gray-100 md:shadow-sm md:z-40">
-        <div className="px-6 pt-8 pb-6">
-          <h1 className="text-xl font-bold text-gray-800">
-            <span className="gradient-text">ตลาดนัด</span> POS
-          </h1>
-          <p className="text-xs text-gray-400 mt-1 tracking-wide">ระบบขายของในตลาดนัด</p>
+        <div className="px-5 pt-7 pb-4 border-b border-gray-100">
+          <MaekaLogo size={30} />
+          {vendor?.booth_name && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+              <p className="text-sm font-bold text-gray-700 truncate">{vendor.booth_name}</p>
+            </div>
+          )}
         </div>
 
         <nav className="flex flex-col gap-0.5 flex-1 px-3">
@@ -108,7 +114,7 @@ export default function BottomNavBar() {
         </nav>
 
         <div className="px-6 py-4 border-t border-gray-100">
-          <p className="text-[10px] text-gray-400 text-center tracking-wide">ตลาดนัด POS v1.0</p>
+          <p className="text-[10px] text-gray-400 text-center tracking-wide">MaekaOS v1.0</p>
         </div>
       </aside>
 

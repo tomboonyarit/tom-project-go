@@ -44,7 +44,7 @@ export default function ReportsPage() {
   }, [viewMode, fetchDaily, fetchMonthly]);
 
   const maxRevenue = monthlyReport
-    ? Math.max(...monthlyReport.daily.map((d) => d.revenue), 1)
+    ? Math.max(...monthlyReport.daily_breakdown.map((d) => d.revenue), 1)
     : 1;
 
   return (
@@ -266,11 +266,11 @@ function MonthlyView({
           <span className="w-1 h-4 rounded-full bg-orange-500" />
           รายได้รายวัน
         </h2>
-        {report.daily.length === 0 ? (
+        {report.daily_breakdown.length === 0 ? (
           <p className="text-sm text-gray-400 text-center py-5">ไม่มีข้อมูล</p>
         ) : (
           <div className="flex items-end gap-1.5 h-40">
-            {report.daily.map((day) => {
+            {report.daily_breakdown.map((day) => {
               const heightPct = maxRevenue > 0 ? (day.revenue / maxRevenue) * 100 : 0;
               const isToday = day.date === todayISO();
               return (

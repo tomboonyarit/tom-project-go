@@ -5,8 +5,8 @@ import { ThemeProvider } from "@/lib/theme";
 import ClientLayout from "./client-layout";
 
 export const metadata: Metadata = {
-  title: "ตลาดนัด POS",
-  description: "ระบบขายของในตลาดนัด สำหรับผู้ค้า",
+  title: "MaekaOS",
+  description: "ระบบ POS สำหรับผู้ค้า — MaekaOS",
 };
 
 export const viewport = {

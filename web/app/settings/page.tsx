@@ -369,7 +369,7 @@ export default function SettingsPage() {
         </button>
 
         <div className="text-center text-xs text-gray-400 py-4">
-          ตลาดนัด POS v1.0.0
+          MaekaOS v1.0
         </div>
       </div>
     </div>

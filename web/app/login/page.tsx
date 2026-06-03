@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
+import MaekaLogo from "@/components/MaekaLogo";
 
 export default function LoginPage() {
   const [phone, setPhone] = useState("");
@@ -51,15 +52,11 @@ export default function LoginPage() {
         {/* Card */}
         <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-xl shadow-orange-900/10 p-8 border border-white/20">
           <div className="text-center mb-8 animate-fade-in-down">
-            <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-orange-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-orange-500/25">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={2} className="w-8 h-8">
-                <path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z" />
-                <path d="m3 9 2.45-4.9A2 2 0 0 1 7.24 3h9.52a2 2 0 0 1 1.8 1.1L21 9" />
-                <path d="M12 3v6" />
-              </svg>
+            <div className="flex justify-center mb-4">
+              <MaekaLogo size={48} showText={false} />
             </div>
             <h1 className="text-2xl font-bold text-gray-800">เข้าสู่ระบบ</h1>
-            <p className="text-sm text-gray-400 mt-1">ตลาดนัด POS</p>
+            <p className="text-sm text-gray-400 mt-1">MaekaOS</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
