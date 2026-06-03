@@ -94,6 +94,13 @@ func ProductCreate(pool *pgxpool.Pool, vendorID string, p *models.Product) error
 	if err != nil {
 		return fmt.Errorf("create product: %w", err)
 	}
+	// Fetch category_name if category_id is set
+	if p.CategoryID != nil && *p.CategoryID != "" {
+		_ = pool.QueryRow(context.Background(),
+			`SELECT name FROM categories WHERE id = $1 AND vendor_id = $2`,
+			*p.CategoryID, vendorID,
+		).Scan(&p.CategoryName)
+	}
 	return nil
 }
 

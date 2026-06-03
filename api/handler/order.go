@@ -48,7 +48,7 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	order, err := repository.OrderCreate(h.pool, vendorID, req.Items, req.Discount, req.CustomerNote, req.PaymentMethod, req.Tags)
 	if err != nil {
-		errorJSON(w, http.StatusInternalServerError, "failed to create order")
+		errorJSON(w, http.StatusInternalServerError, "failed to create order: "+err.Error())
 		return
 	}
 

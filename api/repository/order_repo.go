@@ -24,8 +24,8 @@ func OrderCreate(pool *pgxpool.Pool, vendorID string, items []models.CreateOrder
 
 	var maxNo string
 	err = tx.QueryRow(ctx,
-		`SELECT order_no FROM orders WHERE order_no LIKE $1 AND vendor_id = $2 ORDER BY order_no DESC LIMIT 1`,
-		"POS-"+datePrefix+"-%", vendorID,
+		`SELECT order_no FROM orders WHERE order_no LIKE $1 ORDER BY order_no DESC LIMIT 1`,
+		"POS-"+datePrefix+"-%",
 	).Scan(&maxNo)
 	nextSeq := 1
 	if err == nil && len(maxNo) >= 15 {

@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { productApi, categoryApi, orderApi, qrApi, tagApi, type Product, type Category, type PaymentMethod, type CustomerTag } from "@/lib/api";
+import { productApi, categoryApi, orderApi, tagApi, type Product, type Category, type PaymentMethod, type CustomerTag } from "@/lib/api";
 import { formatBaht } from "@/lib/utils";
-import HoldToConfirmButton from "@/components/HoldToConfirmButton";
 
 // ── Cart Item ────────────────────────────────────────────
 
@@ -685,17 +684,8 @@ function CheckoutModal({
   onConfirm: () => Promise<void>;
   onClose: () => void;
 }) {
-  const [qrUrl, setQrUrl] = useState("");
-  const [qrLoading, setQrLoading] = useState(false);
   const [newTagName, setNewTagName] = useState("");
   const [addingTag, setAddingTag] = useState(false);
-
-  useEffect(() => {
-    if (step === "confirm" && paymentMethod === "promptpay" && total > 0) {
-      setQrLoading(true);
-      qrApi.getPromptPayQR(total).then(setQrUrl).catch(() => {}).finally(() => setQrLoading(false));
-    }
-  }, [step, paymentMethod, total]);
 
   useEffect(() => {
     tagApi.list().then((data) => setPredefinedTags(data.tags)).catch(() => {});
@@ -829,100 +819,47 @@ function CheckoutModal({
               )}
             </div>
 
-            {/* Payment method selection */}
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setPaymentMethod("cash");
-                  setStep("confirm");
-                }}
-                className="flex flex-col items-center justify-center gap-2.5 p-6 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 text-white min-h-[110px] active:scale-95 transition-all duration-150 shadow-lg shadow-green-500/20"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-10 h-10">
-                  <rect x="2" y="6" width="20" height="12" rx="2" />
-                  <circle cx="12" cy="12" r="2" />
-                </svg>
-                <span className="font-bold text-lg">เงินสด</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPaymentMethod("promptpay");
-                  setStep("confirm");
-                }}
-                className="flex flex-col items-center justify-center gap-2.5 p-6 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white min-h-[110px] active:scale-95 transition-all duration-150 shadow-lg shadow-blue-500/20"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-10 h-10">
-                  <rect x="5" y="3" width="14" height="18" rx="2" />
-                  <path d="M9 12h6" />
-                  <path d="M9 16h6" />
-                  <path d="M9 8h2" />
-                </svg>
-                <span className="font-bold text-lg">พร้อมเพย์</span>
-              </button>
-            </div>
+            {/* Payment — cash only */}
+            <button
+              type="button"
+              onClick={() => {
+                setPaymentMethod("cash");
+                setStep("confirm");
+              }}
+              className="w-full flex flex-col items-center justify-center gap-2.5 p-6 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 text-white min-h-[110px] active:scale-95 transition-all duration-150 shadow-lg shadow-green-500/20"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-10 h-10">
+                <rect x="2" y="6" width="20" height="12" rx="2" />
+                <circle cx="12" cy="12" r="2" />
+              </svg>
+              <span className="font-bold text-lg">เงินสด</span>
+            </button>
           </>
         ) : (
-          /* Confirm step */
-          <div>
-            {paymentMethod === "cash" ? (
-              <div className="text-center">
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 mb-4 border border-green-100">
-                  <p className="text-sm text-gray-500 mb-1">ยอดที่ต้องชำระ</p>
-                  <p className="text-4xl font-bold text-green-600 tabular-nums">
-                    {formatBaht(total)}
-                  </p>
-                </div>
+          /* Confirm step — cash only */
+          <div className="text-center">
+            <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-6 mb-4 border border-green-100">
+              <p className="text-sm text-gray-500 mb-1">ยอดที่ต้องชำระ</p>
+              <p className="text-4xl font-bold text-green-600 tabular-nums">
+                {formatBaht(total)}
+              </p>
+            </div>
 
-                <HoldToConfirmButton
-                  onConfirm={onConfirm}
-                  label="กดค้างเพื่อยืนยันรับเงิน"
-                  className="w-full bg-gradient-to-r from-green-500 to-emerald-600 shadow-lg shadow-green-500/25"
-                  disabled={loading}
-                />
-              </div>
-            ) : (
-              <div className="text-center">
-                <div className="bg-white rounded-2xl p-5 mb-4 border border-gray-200 shadow-sm inline-block mx-auto">
-                  {qrLoading ? (
-                    <div className="w-56 h-56 flex items-center justify-center">
-                      <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  ) : qrUrl ? (
-                    <img
-                      src={qrUrl}
-                      alt="PromptPay QR"
-                      className="w-56 h-56 mx-auto"
-                    />
-                  ) : (
-                    <div className="w-56 h-56 flex items-center justify-center text-sm text-gray-400">
-                      ไม่สามารถสร้าง QR ได้
-                    </div>
-                  )}
-                </div>
-                <p className="text-2xl font-bold text-gray-800 mb-4 tabular-nums">
-                  {formatBaht(total)}
-                </p>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={loading}
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold text-lg min-h-[52px] disabled:opacity-50 transition-all duration-150 active:scale-[0.98] shadow-lg shadow-green-500/25"
+            >
+              {loading ? "กำลังบันทึก..." : "ยืนยันรับเงิน"}
+            </button>
 
-                <button
-                  type="button"
-                  onClick={onConfirm}
-                  disabled={loading}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-bold text-base min-h-[48px] disabled:opacity-50 transition-all duration-150 active:scale-[0.98] shadow-lg shadow-blue-500/20"
-                >
-                  {loading ? "กำลังดำเนินการ..." : "ยืนยันว่าได้รับเงินแล้ว"}
-                </button>
-              </div>
-            )}
-
-            {/* Back to payment selection */}
             <button
               type="button"
               onClick={() => setStep("select")}
               className="w-full mt-3 py-3 rounded-xl bg-gray-100 text-gray-600 font-medium min-h-[44px] active:bg-gray-200 transition-all duration-150 active:scale-[0.98]"
             >
-              เปลี่ยนวิธีชำระเงิน
+              ย้อนกลับ
             </button>
           </div>
         )}
