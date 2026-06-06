@@ -95,12 +95,17 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		fields["sort_order"] = sortOrder
 	}
 
-	if err := repository.CategoryUpdate(h.pool, vendorID, id, fields); err != nil {
+	cat, err := repository.CategoryUpdate(h.pool, vendorID, id, fields)
+	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to update category")
 		return
 	}
+	if cat == nil {
+		writeJSON(w, http.StatusOK, map[string]string{"message": "no changes"})
+		return
+	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"message": "category updated"})
+	writeJSON(w, http.StatusOK, cat)
 }
 
 func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {

@@ -28,8 +28,7 @@ export default function SettingsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [newCatName, setNewCatName] = useState("");
   const [addingCat, setAddingCat] = useState(false);
-  const [editingCatId, setEditingCatId] = useState<string | null>(null);
-  const [editingCatName, setEditingCatName] = useState("");
+  const [editingCat, setEditingCat] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (vendor) {
@@ -101,12 +100,23 @@ export default function SettingsPage() {
   };
 
   const handleRenameCategory = async (id: string) => {
-    if (!editingCatName.trim()) return;
+    if (!editingCat || !editingCat.name.trim()) return;
+    const nextName = editingCat.name.trim();
     try {
-      const updated = await categoryApi.update(id, { name: editingCatName.trim() });
-      setCategories((prev) => prev.map((c) => (c.id === id ? updated : c)));
-      setEditingCatId(null);
-      setEditingCatName("");
+      const updated = await categoryApi.update(id, { name: nextName });
+      setCategories((prev) =>
+        prev.map((c) => {
+          if (c.id !== id) return c;
+          return {
+            ...c,
+            ...updated,
+            id: c.id,
+            name: nextName,
+            product_count: c.product_count,
+          };
+        })
+      );
+      setEditingCat(null);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาด";
       setMessage(`❌ ${msg}`);
@@ -369,22 +379,23 @@ export default function SettingsPage() {
             <div className="flex flex-col gap-2 mb-4">
               {categories.map((cat, i) => (
                 <div key={cat.id || `cat-${i}`}>
-                  {editingCatId === cat.id ? (
+                  {editingCat && editingCat.id === cat.id ? (
                     <div className="flex items-center gap-2">
                       <input
                         type="text"
                         autoFocus
-                        value={editingCatName}
-                        onChange={(e) => setEditingCatName(e.target.value)}
+                        value={editingCat.name}
+                        onChange={(e) => setEditingCat({ ...editingCat, name: e.target.value })}
                         className="flex-1 px-3 py-2 rounded-lg border border-orange-300 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white min-h-[36px]"
                         onKeyDown={(e) => {
                           if (e.key === "Enter") handleRenameCategory(cat.id);
-                          if (e.key === "Escape") { setEditingCatId(null); setEditingCatName(""); }
+                          if (e.key === "Escape") { setEditingCat(null); }
                         }}
-                        onBlur={() => { if (editingCatName.trim()) handleRenameCategory(cat.id); else { setEditingCatId(null); setEditingCatName(""); } }}
+                        onBlur={() => { if (editingCat?.name.trim()) handleRenameCategory(cat.id); else { setEditingCat(null); } }}
                       />
                       <button
                         type="button"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => handleRenameCategory(cat.id)}
                         className="px-3 py-2 rounded-lg bg-orange-500 text-white text-xs font-medium active:scale-95 transition-all"
                       >
@@ -402,7 +413,7 @@ export default function SettingsPage() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => { setEditingCatId(cat.id); setEditingCatName(cat.name); }}
+                        onClick={() => { setEditingCat({ id: cat.id, name: cat.name }); }}
                         className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-orange-100 hover:text-orange-600 transition-colors"
                         title="เปลี่ยนชื่อ"
                       >

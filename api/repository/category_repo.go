@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"api/models"
 
@@ -55,9 +56,9 @@ func CategoryCreate(pool *pgxpool.Pool, vendorID, name string, sortOrder int) (*
 	return c, nil
 }
 
-func CategoryUpdate(pool *pgxpool.Pool, vendorID, id string, fields map[string]interface{}) error {
+func CategoryUpdate(pool *pgxpool.Pool, vendorID, id string, fields map[string]interface{}) (*models.Category, error) {
 	if len(fields) == 0 {
-		return nil
+		return nil, nil
 	}
 	setClauses := []string{}
 	args := []interface{}{}
@@ -69,14 +70,15 @@ func CategoryUpdate(pool *pgxpool.Pool, vendorID, id string, fields map[string]i
 	}
 	args = append(args, id, vendorID)
 	query := fmt.Sprintf(
-		"UPDATE categories SET %s WHERE id = $%d AND vendor_id = $%d",
-		setClauses[0], i, i+1,
+		"UPDATE categories SET %s WHERE id = $%d AND vendor_id = $%d RETURNING id, vendor_id, name, sort_order, created_at",
+		strings.Join(setClauses, ", "), i, i+1,
 	)
-	_, err := pool.Exec(context.Background(), query, args...)
+	c := &models.Category{}
+	err := pool.QueryRow(context.Background(), query, args...).Scan(&c.ID, &c.VendorID, &c.Name, &c.SortOrder, &c.CreatedAt)
 	if err != nil {
-		return fmt.Errorf("update category: %w", err)
+		return nil, fmt.Errorf("update category: %w", err)
 	}
-	return nil
+	return c, nil
 }
 
 func CategoryDelete(pool *pgxpool.Pool, vendorID, id string) error {

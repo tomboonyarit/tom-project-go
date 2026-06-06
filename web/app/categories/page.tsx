@@ -44,10 +44,20 @@ export default function CategoriesPage() {
 
   const handleRename = async (id: string) => {
     if (!editName.trim()) return;
+    const nextName = editName.trim();
     try {
-      const updated = await categoryApi.update(id, { name: editName.trim() });
+      const updated = await categoryApi.update(id, { name: nextName });
       setCategories((prev) =>
-        prev.map((c) => (c.id === id ? updated : c)),
+        prev.map((c) => {
+          if (c.id !== id) return c;
+          return {
+            ...c,
+            ...updated,
+            id: c.id,
+            name: nextName,
+            product_count: c.product_count,
+          };
+        }),
       );
       setEditingId(null);
     } catch (err: unknown) {
