@@ -368,7 +368,7 @@ export default function SettingsPage() {
           {categories.length > 0 ? (
             <div className="flex flex-col gap-2 mb-4">
               {categories.map((cat, i) => (
-                <div key={cat.id}>
+                <div key={cat.id || `cat-${i}`}>
                   {editingCatId === cat.id ? (
                     <div className="flex items-center gap-2">
                       <input
@@ -476,7 +476,7 @@ export default function SettingsPage() {
           {tags.length > 0 ? (
             <div className="flex flex-col gap-2 mb-4">
               {tags.map((tag, i) => (
-                <div key={tag.id} className="flex items-center gap-2">
+                <div key={tag.id || `tag-${i}`} className="flex items-center gap-2">
                   <span className="text-[10px] text-gray-300 w-4 text-right font-mono">{i + 1}</span>
                   <span className="flex-1 inline-flex items-center px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-sm font-medium border border-purple-100">
                     {tag.name}

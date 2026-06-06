@@ -45,20 +45,20 @@ type Product struct {
 }
 
 type Order struct {
-	ID            string       `json:"id"`
-	VendorID      string       `json:"vendor_id"`
-	OrderNo       string       `json:"order_no"`
-	Subtotal      int          `json:"subtotal"`
-	Discount      int          `json:"discount"`
-	Total         int          `json:"total"`
-	Status        string       `json:"status"`
-	PaymentMethod *string      `json:"payment_method"`
-	CustomerNote  string       `json:"customer_note"`
-	Tags          string       `json:"tags"`
-	ItemCount     int          `json:"item_count,omitempty"`
-	Items         []OrderItem  `json:"items,omitempty"`
-	CreatedAt     time.Time    `json:"created_at"`
-	UpdatedAt     time.Time    `json:"updated_at"`
+	ID            string      `json:"id"`
+	VendorID      string      `json:"vendor_id"`
+	OrderNo       string      `json:"order_no"`
+	Subtotal      int         `json:"subtotal"`
+	Discount      int         `json:"discount"`
+	Total         int         `json:"total"`
+	Status        string      `json:"status"`
+	PaymentMethod *string     `json:"payment_method"`
+	CustomerNote  string      `json:"customer_note"`
+	Tags          string      `json:"tags"`
+	ItemCount     int         `json:"item_count,omitempty"`
+	Items         []OrderItem `json:"items,omitempty"`
+	CreatedAt     time.Time   `json:"created_at"`
+	UpdatedAt     time.Time   `json:"updated_at"`
 }
 
 type OrderItem struct {
@@ -88,22 +88,22 @@ type CustomerTag struct {
 // ============================================================================
 
 type DailyReport struct {
-	Date           string              `json:"date"`
-	TotalOrders    int                 `json:"total_orders"`
-	TotalRevenue   int                 `json:"total_revenue"`   // satang
-	TotalDiscount  int                 `json:"total_discount"`  // satang
-	ByPayment      []PaymentSummary    `json:"by_payment"`
-	TopProducts    []TopProduct        `json:"top_products"`
+	Date          string           `json:"date"`
+	TotalOrders   int              `json:"total_orders"`
+	TotalRevenue  int              `json:"total_revenue"`  // satang
+	TotalDiscount int              `json:"total_discount"` // satang
+	ByPayment     []PaymentSummary `json:"by_payment"`
+	TopProducts   []TopProduct     `json:"top_products"`
 }
 
 type MonthlyReport struct {
-	Month          string              `json:"month"`
-	TotalOrders    int                 `json:"total_orders"`
-	TotalRevenue   int                 `json:"total_revenue"`
-	TotalDiscount  int                 `json:"total_discount"`
-	ByPayment      []PaymentSummary    `json:"by_payment"`
-	DailyBreakdown []DailySummary      `json:"daily_breakdown"`
-	TopProducts    []TopProduct        `json:"top_products"`
+	Month          string           `json:"month"`
+	TotalOrders    int              `json:"total_orders"`
+	TotalRevenue   int              `json:"total_revenue"`
+	TotalDiscount  int              `json:"total_discount"`
+	ByPayment      []PaymentSummary `json:"by_payment"`
+	DailyBreakdown []DailySummary   `json:"daily_breakdown"`
+	TopProducts    []TopProduct     `json:"top_products"`
 }
 
 type PaymentSummary struct {
@@ -202,8 +202,8 @@ type UpdateCategoryRequest struct {
 }
 
 type UpdateVendorProfileRequest struct {
-	Name       string `json:"name"`
-	BoothName  string `json:"booth_name"`
+	Name        string `json:"name"`
+	BoothName   string `json:"booth_name"`
 	PromptpayID string `json:"promptpay_id"`
 }
 
