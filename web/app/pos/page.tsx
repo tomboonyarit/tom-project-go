@@ -19,18 +19,22 @@ export default function POSPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [cartExpanded, setCartExpanded] = useState(true);
+  const [cartLevel, setCartLevel] = useState(0); // 0=hidden, 1=fullscreen
   const [showCheckout, setShowCheckout] = useState(false);
-  const [showQuickProduct, setShowQuickProduct] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [tagInput, setTagInput] = useState("");
+  const [showTagDropdown, setShowTagDropdown] = useState(false);
+  const [timeNow, setTimeNow] = useState<Date | null>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
+  const tagInputRef = useRef<HTMLInputElement>(null);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [predefinedTags, setPredefinedTags] = useState<CustomerTag[]>([]);
 
   const fetchProducts = useCallback(async () => {
     try {
       const [prods, cats] = await Promise.all([
-        productApi.list(search || undefined, activeCategory || undefined),
+        productApi.list(undefined, activeCategory || undefined),
         categoryApi.list(),
       ]);
       setProducts(prods);
@@ -40,7 +44,7 @@ export default function POSPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, activeCategory]);
+  }, [activeCategory]);
 
   useEffect(() => {
     fetchProducts();
@@ -50,12 +54,67 @@ export default function POSPage() {
     tagApi.list().then((data) => setPredefinedTags(data.tags)).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const tick = () => setTimeNow(new Date());
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (tagInputRef.current && !tagInputRef.current.contains(e.target as Node)) {
+        setShowTagDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
   const handleToggleTag = (tagName: string) => {
     setSelectedTags((prev) =>
       prev.includes(tagName)
         ? prev.filter((t) => t !== tagName)
         : [...prev, tagName]
     );
+  };
+
+  const matchedTags = tagInput.trim()
+    ? predefinedTags.filter((t) =>
+        t.name.toLowerCase().includes(tagInput.trim().toLowerCase()) &&
+        !selectedTags.includes(t.name)
+      )
+    : [];
+
+  const handleSelectTagFromAutocomplete = (tagName: string) => {
+    if (!selectedTags.includes(tagName)) {
+      setSelectedTags((prev) => [...prev, tagName]);
+    }
+    setTagInput("");
+    setShowTagDropdown(false);
+  };
+
+  const handleAddNewTagFromAutocomplete = async () => {
+    const name = tagInput.trim();
+    if (!name) return;
+    try {
+      const tag = await tagApi.create(name);
+      setPredefinedTags((prev) => [...prev, tag]);
+      setSelectedTags((prev) => [...prev, tag.name]);
+    } catch { /* ignore */ }
+    setTagInput("");
+    setShowTagDropdown(false);
+  };
+
+  const handleTagInputKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (matchedTags.length > 0) {
+        handleSelectTagFromAutocomplete(matchedTags[0].name);
+      } else if (tagInput.trim()) {
+        handleAddNewTagFromAutocomplete();
+      }
+    }
   };
 
   const addToCart = useCallback((product: Product, quantity: number) => {
@@ -78,6 +137,8 @@ export default function POSPage() {
         },
       ];
     });
+    setSuccessMsg(`เพิ่ม "${product.name}" เข้าตะกร้าแล้ว`);
+    setTimeout(() => setSuccessMsg(""), 1500);
   }, []);
 
   const updateCartItemQuantity = useCallback(
@@ -114,8 +175,6 @@ export default function POSPage() {
   const [customerNote, setCustomerNote] = useState("");
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [predefinedTags, setPredefinedTags] = useState<CustomerTag[]>([]);
 
   const handleSaveOrder = async () => {
     if (cart.length === 0) return;
@@ -172,127 +231,139 @@ export default function POSPage() {
     }
   };
 
-  const handleQuickProductAdd = async (name: string, price: number) => {
-    try {
-      const product = await productApi.quickCreate(name, price);
-      setCart((prev) => [
-        ...prev,
-        {
-          product_id: product.id,
-          product_name: product.name,
-          price: product.price,
-          quantity: 1,
-        },
-      ]);
-      setShowQuickProduct(false);
-      setSuccessMsg(`เพิ่ม "${name}" เรียบร้อย`);
-      setTimeout(() => setSuccessMsg(""), 2000);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาด";
-      alert(msg);
-    }
-  };
-
-  const filteredProducts = products.filter((p) =>
-    p.is_active !== false && p.name.toLowerCase().includes(search.toLowerCase()),
-  );
+  const filteredProducts = products.filter((p) => p.is_active !== false);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-orange-50">
       {/* Success toast */}
       {successMsg && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-gray-800/90 backdrop-blur-sm text-white px-5 py-3 rounded-2xl shadow-xl text-sm font-medium animate-fade-in-down flex items-center gap-2">
+        <div className="fixed inset-0 flex items-center justify-center z-[100] pointer-events-none">
+          <div className="bg-gray-800/90 backdrop-blur-sm text-white px-5 py-3 rounded-2xl shadow-xl text-sm font-medium animate-scale-in flex items-center gap-2 pointer-events-auto">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4 text-green-400 flex-shrink-0">
             <path d="M20 6 9 17l-5-5" />
           </svg>
-          {successMsg}
+           {successMsg}
+          </div>
         </div>
       )}
 
       {/* ===== TOP HALF: Product Grid ===== */}
       <div className="flex flex-col flex-1 min-h-0">
-        {/* Search bar */}
-        <div className="p-3 pb-0 flex gap-2 items-center">
-          <div className="flex-1 relative">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={2}
-              className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.35-4.35" />
+        {/* Date / Time */}
+        <div className="px-3 pt-2 pb-0.5">
+          <div className="flex items-center gap-1.5 text-gray-500">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 text-gray-400 flex-shrink-0">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
             </svg>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="ค้นหาสินค้า..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent bg-white min-h-[44px] transition-all duration-200 shadow-sm"
-            />
+            <span className="text-xs font-semibold text-gray-700 tabular-nums leading-none">
+              {timeNow
+                ? new Intl.DateTimeFormat("th-TH", {
+                    timeZone: "Asia/Bangkok",
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }).format(timeNow)
+                : "..."}
+            </span>
+            <span className="text-[9px] text-gray-400 font-medium leading-none">ICT</span>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowQuickProduct(true)}
-            className="px-4 py-2.5 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl font-bold text-sm min-h-[44px] whitespace-nowrap active:scale-95 transition-all duration-150 shadow-md shadow-orange-500/20"
-          >
-            + ด่วน
-          </button>
         </div>
 
         {/* Category tabs */}
-        <div
-          ref={tabsRef}
-          className="flex gap-2 overflow-x-auto no-scrollbar px-3 py-2.5"
-        >
-          <button
-            type="button"
-            onClick={() => setActiveCategory(null)}
-            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap min-h-[36px] transition-all duration-200 ${
-              activeCategory === null
-                ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-md shadow-orange-500/20"
-                : "bg-white text-gray-600 border border-gray-200 hover:border-orange-200 hover:text-orange-600"
-            }`}
-          >
-            ทั้งหมด
-          </button>
-          {categories.map((cat) => (
+        <div className="flex items-center gap-1 px-3 pt-1 pb-1">
+          <span className="text-[10px] text-gray-300 font-medium mr-1 whitespace-nowrap">หมวด</span>
+          <div className="h-4 w-px bg-gray-200 mr-1" />
+          <div className="flex gap-2 overflow-x-auto no-scrollbar flex-1">
             <button
-              key={cat.id}
               type="button"
-              onClick={() => setActiveCategory(cat.id)}
-              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap min-h-[36px] transition-all duration-200 ${
-                activeCategory === cat.id
+              onClick={() => setActiveCategory(null)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap min-h-[32px] transition-all duration-200 ${
+                activeCategory === null
                   ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-md shadow-orange-500/20"
                   : "bg-white text-gray-600 border border-gray-200 hover:border-orange-200 hover:text-orange-600"
               }`}
             >
-              {cat.name}
+              ทั้งหมด
             </button>
-          ))}
-        </div>
-
-        {/* Tags selector */}
-        {predefinedTags.length > 0 && (
-          <div className="flex gap-1.5 overflow-x-auto no-scrollbar px-3 pb-2">
-            {predefinedTags.map((tag) => (
+            {categories.map((cat) => (
               <button
-                key={tag.id}
+                key={cat.id}
                 type="button"
-                onClick={() => handleToggleTag(tag.name)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap min-h-[32px] transition-all duration-150 ${
-                  selectedTags.includes(tag.name)
-                    ? "bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-sm shadow-purple-500/20"
-                    : "bg-white text-gray-500 border border-gray-200 hover:border-purple-200 hover:text-purple-600"
+                onClick={() => setActiveCategory(cat.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap min-h-[32px] transition-all duration-200 ${
+                  activeCategory === cat.id
+                    ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-md shadow-orange-500/20"
+                    : "bg-white text-gray-600 border border-gray-200 hover:border-orange-200 hover:text-orange-600"
                 }`}
               >
-                {tag.name}
+                {cat.name}
               </button>
             ))}
           </div>
-        )}
+        </div>
+
+        {/* Tag autocomplete + selected tags */}
+        <div className="flex items-center gap-1 px-3 pb-2 pt-1">
+          <span className="text-[10px] text-gray-300 font-medium mr-1 whitespace-nowrap">แท็ก</span>
+          <div className="h-4 w-px bg-gray-200 mr-1" />
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+            {selectedTags.map((tagName) => (
+              <button
+                key={tagName}
+                type="button"
+                onClick={() => handleToggleTag(tagName)}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700 border border-purple-200 whitespace-nowrap active:scale-95 transition-all"
+              >
+                {tagName}
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3 h-3">
+                  <path d="M18 6 6 18M6 6l12 12" />
+                </svg>
+              </button>
+            ))}
+            <div className="relative flex-1 min-w-[100px]" ref={tagInputRef}>
+              <input
+                type="text"
+                value={tagInput}
+                onChange={(e) => { setTagInput(e.target.value); setShowTagDropdown(true); }}
+                onFocus={() => setShowTagDropdown(true)}
+                onKeyDown={handleTagInputKeyDown}
+                placeholder="เพิ่มแท็ก..."
+                className="w-full px-2.5 py-1 rounded-full text-xs border border-gray-200 focus:outline-none focus:ring-1 focus:ring-purple-400 focus:border-transparent bg-white min-h-[28px]"
+              />
+              {showTagDropdown && tagInput.trim() && (
+                <div className="absolute top-full left-0 mt-1 w-full bg-white rounded-xl shadow-lg border border-gray-200 z-30 max-h-[160px] overflow-y-auto animate-fade-in-up">
+                  {matchedTags.map((tag) => (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); handleSelectTagFromAutocomplete(tag.name); }}
+                      className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors first:rounded-t-xl last:rounded-b-xl"
+                    >
+                      {tag.name}
+                    </button>
+                  ))}
+                  {matchedTags.length === 0 && (
+                    <button
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); handleAddNewTagFromAutocomplete(); }}
+                      className="w-full text-left px-3 py-2 text-xs text-purple-600 font-medium hover:bg-purple-50 transition-colors rounded-xl flex items-center gap-1.5"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                      เพิ่ม &quot;{tagInput.trim()}&quot;
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
 
         {/* Product grid */}
         <div className="flex-1 overflow-y-auto px-3 pb-2">
@@ -356,185 +427,152 @@ export default function POSPage() {
       {/* ===== Cart pull-tab / handle ===== */}
       <button
         type="button"
-        onClick={() => setCartExpanded(!cartExpanded)}
-        className="flex items-center justify-center gap-3 py-2 bg-white border-t border-gray-200 select-none min-h-[40px] active:bg-gray-50 transition-colors"
+        onClick={() => setCartLevel((prev) => (prev === 0 ? 1 : 0))}
+        className="relative z-30 flex items-center justify-center gap-2 py-2.5 bg-white border-t border-gray-200 select-none min-h-[44px] active:bg-gray-50 transition-colors flex-shrink-0"
       >
-        <span className="w-10 h-1 rounded-full bg-gray-300" />
-        <span className="text-xs text-gray-500 font-medium">
-          {cartExpanded ? "▼ ซ่อนตะกร้า" : `▲ ตะกร้า${cart.length > 0 ? ` (${cart.length})` : ""}`}
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-600">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
+            {cartLevel === 1 ? <path d="m6 9 6 6 6-6" /> : <path d="m18 15-6-6-6 6" />}
+          </svg>
+          {cartLevel === 0 && "แตะเพื่อแสดงตะกร้า"}
+          {cartLevel === 1 && `ตะกร้าเต็มจอ${cart.length > 0 ? ` (${cart.length})` : ""} — แตะเพื่อซ่อน`}
         </span>
-        <span className="w-10 h-1 rounded-full bg-gray-300" />
       </button>
 
-      {/* ===== BOTTOM HALF: Cart Drawer ===== */}
-      <div
-        className={`bg-white border-t border-gray-200 flex flex-col transition-all duration-300 overflow-hidden ${
-          cartExpanded ? "max-h-[45vh]" : "h-auto"
-        }`}
-      >
-        {/* Collapsed: just total + checkout button */}
-        {!cartExpanded && cart.length > 0 && (
-          <div className="flex items-center justify-between px-4 py-2.5 gap-2">
-            <span className="text-sm font-semibold text-gray-700">
-              {cart.length} รายการ • {formatBaht(total)}
+      {/* ===== Cart Drawer (fullscreen) ===== */}
+      {cartLevel === 1 && (
+        <div className="fixed inset-0 z-20 bg-white flex flex-col animate-slide-in-up">
+          <button
+            type="button"
+            onClick={() => setCartLevel(0)}
+            className="flex items-center justify-center gap-2 py-2.5 bg-white border-b border-gray-200 select-none min-h-[44px] active:bg-gray-50 transition-colors flex-shrink-0"
+          >
+            <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-600">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
+                <path d="m18 15-6-6-6 6" />
+              </svg>
+              เต็มจอ{cart.length > 0 ? ` (${cart.length})` : ""} — แตะเพื่อย่อ
             </span>
+          </button>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+            <h2 className="font-semibold text-gray-800 text-base">
+              ตะกร้า ({cart.length})
+            </h2>
+            {cart.length > 0 && (
+              <button
+                type="button"
+                onClick={clearCart}
+                className="text-xs text-red-500 font-medium px-3 py-1.5 min-h-[32px] active:bg-red-50 rounded-lg transition-colors"
+              >
+                ล้างทั้งหมด
+              </button>
+            )}
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 py-2 min-h-0">
+            {cart.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-gray-400 py-8">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-10 h-10 mb-2">
+                  <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+                  <path d="M3 6h18" />
+                  <path d="M16 10a4 4 0 0 1-8 0" />
+                </svg>
+                <p className="text-sm">ยังไม่มีสินค้าในตะกร้า</p>
+                <p className="text-xs mt-1">เลือกสินค้าด้านบน</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {cart.map((item) => (
+                  <div
+                    key={item.product_id}
+                    className="flex items-center gap-2 py-2.5 border-b border-gray-50 last:border-0"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 truncate">{item.product_name}</p>
+                      <p className="text-xs text-gray-400">{formatBaht(item.price)}</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => updateCartItemQuantity(item.product_id, item.quantity - 1)}
+                        className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-bold text-lg min-w-[32px] active:bg-gray-200 transition-all duration-150 select-none"
+                      >−</button>
+                      <span className="w-8 text-center text-sm font-semibold text-gray-800 tabular-nums">{item.quantity}</span>
+                      <button
+                        type="button"
+                        onClick={() => updateCartItemQuantity(item.product_id, item.quantity + 1)}
+                        className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-bold text-lg min-w-[32px] active:bg-orange-200 transition-all duration-150 select-none"
+                      >+</button>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-800 tabular-nums w-16 text-right">
+                      {formatBaht(item.price * item.quantity)}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => removeCartItem(item.product_id)}
+                      className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center text-red-400 min-w-[28px] active:bg-red-100 transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+                        <path d="M18 6 6 18M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="border-t border-gray-100 px-4 py-3 pb-5 md:pb-3 space-y-3">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">รวม</span>
+              <span className="font-semibold text-gray-700 tabular-nums">{formatBaht(subtotal)}</span>
+            </div>
+            <div className="flex justify-between text-base border-t border-gray-100 pt-2">
+              <span className="font-bold text-gray-800">ยอดสุทธิ</span>
+              <span className="font-bold text-orange-600 text-lg tabular-nums">{formatBaht(total)}</span>
+            </div>
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={handleSaveOrder}
-                disabled={checkoutLoading}
-                className="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 font-bold text-sm min-h-[40px] active:bg-gray-200 disabled:opacity-40 transition-all duration-150 active:scale-95"
+                disabled={cart.length === 0 || checkoutLoading}
+                className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-bold text-sm min-h-[48px] active:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.98]"
               >
                 {checkoutLoading ? "..." : "บันทึก"}
               </button>
               <button
                 type="button"
-                onClick={() => setShowCheckout(true)}
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold text-sm min-h-[40px] active:scale-95 transition-all duration-150 shadow-sm shadow-orange-500/20"
+                onClick={() => { if (cart.length > 0) { setShowCheckout(true); setCheckoutStep("select"); } }}
+                disabled={cart.length === 0}
+                className="flex-1 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold text-base min-h-[48px] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 shadow-md shadow-orange-500/20"
               >
-                ชำระเงิน
+                ชำระเงิน • {formatBaht(total)}
               </button>
             </div>
           </div>
-        )}
-        {!cartExpanded && cart.length === 0 && (
-          <div className="px-4 py-2.5 text-center">
-            <span className="text-sm text-gray-400">แตะสินค้าเพื่อเพิ่มลงตะกร้า</span>
-          </div>
-        )}
-        {/* Expanded: full cart */}
-        {cartExpanded && (
-          <>
-            {/* Cart header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-              <h2 className="font-semibold text-gray-800 text-base">
-                ตะกร้า ({cart.length})
-              </h2>
-              <div className="flex gap-2">
-                {cart.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={clearCart}
-                    className="text-xs text-red-500 font-medium px-3 py-1.5 min-h-[32px] active:bg-red-50 rounded-lg transition-colors"
-                  >
-                    ล้างทั้งหมด
-                  </button>
-                )}
-              </div>
-            </div>
-            {/* Cart items */}
-            <div className="flex-1 overflow-y-auto px-4 py-2">
-          {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-10 h-10 mb-2">
-                <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
-                <path d="M3 6h18" />
-                <path d="M16 10a4 4 0 0 1-8 0" />
-              </svg>
-              <p className="text-sm">ยังไม่มีสินค้าในตะกร้า</p>
-              <p className="text-xs mt-1">เลือกสินค้าด้านบน</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {cart.map((item) => (
-                <div
-                  key={item.product_id}
-                  className="flex items-center gap-2 py-2.5 border-b border-gray-50 last:border-0"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">
-                      {item.product_name}
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      {formatBaht(item.price)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => updateCartItemQuantity(item.product_id, item.quantity - 1)}
-                      className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 font-bold text-lg min-w-[32px] active:bg-gray-200 transition-all duration-150 select-none"
-                    >
-                      −
-                    </button>
-                    <span className="w-8 text-center text-sm font-semibold text-gray-800 tabular-nums">
-                      {item.quantity}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => updateCartItemQuantity(item.product_id, item.quantity + 1)}
-                      className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-bold text-lg min-w-[32px] active:bg-orange-200 transition-all duration-150 select-none"
-                    >
-                      +
-                    </button>
-                  </div>
-                  <p className="text-sm font-semibold text-gray-800 tabular-nums w-16 text-right">
-                    {formatBaht(item.price * item.quantity)}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => removeCartItem(item.product_id)}
-                    className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center text-red-400 min-w-[28px] active:bg-red-100 transition-colors"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
-                      <path d="M18 6 6 18M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
-
-        {/* Cart footer */}
-        <div className="border-t border-gray-100 px-4 py-3 pb-5 md:pb-3 space-y-3">
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-500">รวม</span>
-            <span className="font-semibold text-gray-700 tabular-nums">
-              {formatBaht(subtotal)}
-            </span>
-          </div>
-          <div className="flex justify-between text-base border-t border-gray-100 pt-2">
-            <span className="font-bold text-gray-800">ยอดสุทธิ</span>
-            <span className="font-bold text-orange-600 text-lg tabular-nums">
-              {formatBaht(total)}
-            </span>
-          </div>
-
+      )}
+      {cartLevel === 0 && cart.length > 0 && (
+        <div className="flex items-center justify-between px-4 py-2.5 gap-2 bg-white border-t border-gray-200 flex-shrink-0">
+          <span className="text-sm font-semibold text-gray-700">
+            {cart.length} รายการ • {formatBaht(total)}
+          </span>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={handleSaveOrder}
-              disabled={cart.length === 0 || checkoutLoading}
-              className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-bold text-sm min-h-[48px] active:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.98]"
+              disabled={checkoutLoading}
+              className="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 font-bold text-sm min-h-[40px] active:bg-gray-200 disabled:opacity-40 transition-all duration-150 active:scale-95"
             >
               {checkoutLoading ? "..." : "บันทึก"}
             </button>
             <button
               type="button"
-              onClick={() => {
-                if (cart.length > 0) {
-                  setShowCheckout(true);
-                  setCheckoutStep("select");
-                }
-              }}
-              disabled={cart.length === 0}
-              className="flex-1 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold text-base min-h-[48px] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 shadow-md shadow-orange-500/20"
+              onClick={() => setShowCheckout(true)}
+              className="px-5 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold text-sm min-h-[40px] active:scale-95 transition-all duration-150 shadow-sm shadow-orange-500/20"
             >
-              ชำระเงิน • {formatBaht(total)}
+              ชำระเงิน
             </button>
           </div>
         </div>
-          </>
-        )}
-      </div>
-
-      {/* ── Quick Product Modal ── */}
-      {showQuickProduct && (
-        <QuickProductForm
-          onSubmit={handleQuickProductAdd}
-          onClose={() => setShowQuickProduct(false)}
-        />
       )}
 
       {/* ── Checkout Modal ── */}
@@ -558,91 +596,6 @@ export default function POSPage() {
           onClose={() => setShowCheckout(false)}
         />
       )}
-    </div>
-  );
-}
-
-// ── Quick Product Form ──────────────────────────────────
-
-function QuickProductForm({
-  onSubmit,
-  onClose,
-}: {
-  onSubmit: (name: string, price: number) => Promise<void>;
-  onClose: () => void;
-}) {
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !price) return;
-    setLoading(true);
-    try {
-      await onSubmit(name.trim(), Math.round(parseFloat(price) * 100));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-fade-in"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-xl animate-scale-in">
-        <h3 className="text-lg font-semibold text-gray-800 mb-5">
-          เพิ่มสินค้าด่วน
-        </h3>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1.5">
-              ชื่อสินค้า
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="ชื่อสินค้า"
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent bg-gray-50 min-h-[48px] transition-all duration-200"
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1.5">
-              ราคา (บาท)
-            </label>
-            <input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              placeholder="50"
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent bg-gray-50 min-h-[48px] transition-all duration-200"
-            />
-          </div>
-          <div className="flex gap-3 pt-1">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-600 font-medium min-h-[44px] active:bg-gray-200 transition-all duration-150 active:scale-95"
-            >
-              ยกเลิก
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !name.trim() || !price}
-              className="flex-1 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold min-h-[44px] disabled:opacity-50 transition-all duration-150 active:scale-95 shadow-sm shadow-orange-500/20"
-            >
-              {loading ? "กำลังเพิ่ม..." : "เพิ่ม & เพิ่มเข้าตะกร้า"}
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }
@@ -684,12 +637,61 @@ function CheckoutModal({
   onConfirm: () => Promise<void>;
   onClose: () => void;
 }) {
-  const [newTagName, setNewTagName] = useState("");
-  const [addingTag, setAddingTag] = useState(false);
+  const [modalTagInput, setModalTagInput] = useState("");
+  const [modalShowDropdown, setModalShowDropdown] = useState(false);
+  const modalTagRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     tagApi.list().then((data) => setPredefinedTags(data.tags)).catch(() => {});
   }, [setPredefinedTags]);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (modalTagRef.current && !modalTagRef.current.contains(e.target as Node)) {
+        setModalShowDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const modalMatchedTags = modalTagInput.trim()
+    ? predefinedTags.filter((t) =>
+        t.name.toLowerCase().includes(modalTagInput.trim().toLowerCase()) &&
+        !selectedTags.includes(t.name)
+      )
+    : [];
+
+  const handleModalSelectTag = (tagName: string) => {
+    if (!selectedTags.includes(tagName)) {
+      setSelectedTags((prev) => [...prev, tagName]);
+    }
+    setModalTagInput("");
+    setModalShowDropdown(false);
+  };
+
+  const handleModalAddNewTag = async () => {
+    const name = modalTagInput.trim();
+    if (!name) return;
+    try {
+      const tag = await tagApi.create(name);
+      setPredefinedTags((prev) => [...prev, tag]);
+      setSelectedTags((prev) => [...prev, tag.name]);
+    } catch { /* ignore */ }
+    setModalTagInput("");
+    setModalShowDropdown(false);
+  };
+
+  const handleModalTagKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (modalMatchedTags.length > 0) {
+        handleModalSelectTag(modalMatchedTags[0].name);
+      } else if (modalTagInput.trim()) {
+        handleModalAddNewTag();
+      }
+    }
+  };
 
   const handleToggleTag = (tagName: string) => {
     setSelectedTags(
@@ -697,18 +699,6 @@ function CheckoutModal({
         ? selectedTags.filter((t) => t !== tagName)
         : [...selectedTags, tagName]
     );
-  };
-
-  const handleAddTag = async () => {
-    if (!newTagName.trim()) return;
-    setAddingTag(true);
-    try {
-      const tag = await tagApi.create(newTagName.trim());
-      setPredefinedTags((prev) => [...prev, tag]);
-      setSelectedTags((prev) => [...prev, tag.name]);
-      setNewTagName("");
-    } catch { /* ignore */ }
-    finally { setAddingTag(false); }
   };
 
   return (
@@ -779,38 +769,56 @@ function CheckoutModal({
                 แท็กลูกค้า
               </label>
               <div className="flex flex-wrap gap-2 mb-2">
-                {predefinedTags.map((tag) => (
+                {selectedTags.map((tagName) => (
                   <button
-                    key={tag.id}
+                    key={tagName}
                     type="button"
-                    onClick={() => handleToggleTag(tag.name)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 min-h-[32px] ${
-                      selectedTags.includes(tag.name)
-                        ? "bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-sm shadow-purple-500/20"
-                        : "bg-gray-100 text-gray-600 active:bg-gray-200 hover:bg-purple-50 hover:text-purple-600"
-                    }`}
+                    onClick={() => handleToggleTag(tagName)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700 border border-purple-200 whitespace-nowrap active:scale-95 transition-all"
                   >
-                    {tag.name}
+                    {tagName}
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3 h-3">
+                      <path d="M18 6 6 18M6 6l12 12" />
+                    </svg>
                   </button>
                 ))}
               </div>
-              <div className="flex gap-2">
+              <div className="relative" ref={modalTagRef}>
                 <input
                   type="text"
-                  value={newTagName}
-                  onChange={(e) => setNewTagName(e.target.value)}
-                  placeholder="เพิ่มแท็กใหม่"
-                  className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent bg-gray-50 min-h-[40px] transition-all duration-200"
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleAddTag(); }}
+                  value={modalTagInput}
+                  onChange={(e) => { setModalTagInput(e.target.value); setModalShowDropdown(true); }}
+                  onFocus={() => setModalShowDropdown(true)}
+                  onKeyDown={handleModalTagKeyDown}
+                  placeholder="พิมพ์เพื่อค้นหาหรือเพิ่มแท็กใหม่..."
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent bg-gray-50 min-h-[40px] transition-all duration-200"
                 />
-                <button
-                  type="button"
-                  onClick={handleAddTag}
-                  disabled={addingTag || !newTagName.trim()}
-                  className="px-4 py-2.5 rounded-xl bg-purple-100 text-purple-600 font-bold text-sm min-h-[40px] disabled:opacity-50 active:bg-purple-200 transition-all duration-150"
-                >
-                  {addingTag ? "..." : "เพิ่ม"}
-                </button>
+                {modalShowDropdown && modalTagInput.trim() && (
+                  <div className="absolute top-full left-0 mt-1 w-full bg-white rounded-xl shadow-lg border border-gray-200 z-30 max-h-[160px] overflow-y-auto animate-fade-in-up">
+                    {modalMatchedTags.map((tag) => (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onMouseDown={(e) => { e.preventDefault(); handleModalSelectTag(tag.name); }}
+                        className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-700 transition-colors first:rounded-t-xl last:rounded-b-xl"
+                      >
+                        {tag.name}
+                      </button>
+                    ))}
+                    {modalMatchedTags.length === 0 && (
+                      <button
+                        type="button"
+                        onMouseDown={(e) => { e.preventDefault(); handleModalAddNewTag(); }}
+                        className="w-full text-left px-3 py-2 text-xs text-purple-600 font-medium hover:bg-purple-50 transition-colors rounded-xl flex items-center gap-1.5"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5">
+                          <path d="M12 5v14M5 12h14" />
+                        </svg>
+                        เพิ่ม &quot;{modalTagInput.trim()}&quot;
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               {selectedTags.length > 0 && (
                 <p className="text-xs text-gray-400 mt-1.5">

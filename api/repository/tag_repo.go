@@ -44,6 +44,19 @@ func TagCreate(pool *pgxpool.Pool, vendorID, name string) (*models.CustomerTag, 
 	return t, nil
 }
 
+func TagUpdate(pool *pgxpool.Pool, vendorID, id, name string, sortOrder int) (*models.CustomerTag, error) {
+	t := &models.CustomerTag{}
+	err := pool.QueryRow(context.Background(),
+		`UPDATE customer_tags SET name = $1, sort_order = $2 WHERE id = $3 AND vendor_id = $4
+		 RETURNING id, vendor_id, name, sort_order, created_at`,
+		name, sortOrder, id, vendorID,
+	).Scan(&t.ID, &t.VendorID, &t.Name, &t.SortOrder, &t.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return t, nil
+}
+
 func TagDelete(pool *pgxpool.Pool, vendorID, id string) error {
 	_, err := pool.Exec(context.Background(), `DELETE FROM customer_tags WHERE id = $1 AND vendor_id = $2`, id, vendorID)
 	return err

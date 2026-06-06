@@ -88,6 +88,7 @@ func main() {
 	tagHandler := handler.NewTagHandler(pool)
 	mux.Handle("GET /api/tags", authMW(http.HandlerFunc(tagHandler.List)))
 	mux.Handle("POST /api/tags", authMW(http.HandlerFunc(tagHandler.Create)))
+	mux.Handle("PUT /api/tags/{id}", authMW(http.HandlerFunc(tagHandler.Update)))
 	mux.Handle("DELETE /api/tags/{id}", authMW(http.HandlerFunc(tagHandler.Delete)))
 
 	// Reports (protected)

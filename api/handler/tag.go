@@ -47,6 +47,33 @@ func (h *TagHandler) Create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, tag)
 }
 
+func (h *TagHandler) Update(w http.ResponseWriter, r *http.Request) {
+	vendorID := h.vendorID(r)
+	id := r.PathValue("id")
+	var req struct {
+		Name      string `json:"name"`
+		SortOrder *int   `json:"sort_order"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Name == "" {
+		errorJSON(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	sortOrder := 0
+	if req.SortOrder != nil {
+		sortOrder = *req.SortOrder
+	}
+	tag, err := repository.TagUpdate(h.pool, vendorID, id, req.Name, sortOrder)
+	if err != nil {
+		errorJSON(w, http.StatusInternalServerError, "failed to update tag")
+		return
+	}
+	writeJSON(w, http.StatusOK, tag)
+}
+
 func (h *TagHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	vendorID := h.vendorID(r)
 	id := r.PathValue("id")

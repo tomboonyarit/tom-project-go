@@ -69,13 +69,20 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req.Name = strings.TrimSpace(req.Name)
-	if req.Name == "" {
-		errorJSON(w, http.StatusBadRequest, "category name is required")
-		return
+	name := ""
+	if req.Name != nil {
+		name = strings.TrimSpace(*req.Name)
+		if name == "" {
+			errorJSON(w, http.StatusBadRequest, "category name is required")
+			return
+		}
+	}
+	sortOrder := 0
+	if req.SortOrder != nil {
+		sortOrder = *req.SortOrder
 	}
 
-	if err := repository.CategoryUpdate(h.pool, vendorID, id, req.Name, req.SortOrder); err != nil {
+	if err := repository.CategoryUpdate(h.pool, vendorID, id, name, sortOrder); err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to update category")
 		return
 	}

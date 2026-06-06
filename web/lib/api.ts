@@ -337,6 +337,9 @@ export const tagApi = {
   create(name: string): Promise<CustomerTag> {
     return post<CustomerTag>("/tags", { name });
   },
+  update(id: string, name: string, sortOrder: number): Promise<CustomerTag> {
+    return put<CustomerTag>(`/tags/${id}`, { name, sort_order: sortOrder });
+  },
   delete(id: string): Promise<{ success: boolean }> {
     return del<{ success: boolean }>(`/tags/${id}`);
   },

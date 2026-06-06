@@ -56,10 +56,21 @@ func CategoryCreate(pool *pgxpool.Pool, vendorID, name string, sortOrder int) (*
 }
 
 func CategoryUpdate(pool *pgxpool.Pool, vendorID, id string, name string, sortOrder int) error {
+	if name != "" {
+		_, err := pool.Exec(
+			context.Background(),
+			`UPDATE categories SET name = $1, sort_order = $2 WHERE id = $3 AND vendor_id = $4`,
+			name, sortOrder, id, vendorID,
+		)
+		if err != nil {
+			return fmt.Errorf("update category: %w", err)
+		}
+		return nil
+	}
 	_, err := pool.Exec(
 		context.Background(),
-		`UPDATE categories SET name = $1, sort_order = $2 WHERE id = $3 AND vendor_id = $4`,
-		name, sortOrder, id, vendorID,
+		`UPDATE categories SET sort_order = $1 WHERE id = $2 AND vendor_id = $3`,
+		sortOrder, id, vendorID,
 	)
 	if err != nil {
 		return fmt.Errorf("update category: %w", err)

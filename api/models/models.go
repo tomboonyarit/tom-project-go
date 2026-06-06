@@ -197,8 +197,8 @@ type CreateCategoryRequest struct {
 }
 
 type UpdateCategoryRequest struct {
-	Name      string `json:"name"`
-	SortOrder int    `json:"sort_order"`
+	Name      *string `json:"name"`
+	SortOrder *int    `json:"sort_order"`
 }
 
 type UpdateVendorProfileRequest struct {

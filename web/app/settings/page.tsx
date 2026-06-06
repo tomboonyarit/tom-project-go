@@ -4,11 +4,13 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useTheme } from "@/lib/theme";
-import { profileApi, tagApi, type CustomerTag } from "@/lib/api";
+import { useFontSize, FONT_SIZES } from "@/lib/font-size";
+import { profileApi, tagApi, categoryApi, type CustomerTag, type Category } from "@/lib/api";
 
 export default function SettingsPage() {
   const { vendor, logout, refreshVendor } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { fontSize, setFontSize } = useFontSize();
   const router = useRouter();
 
   const [name, setName] = useState("");
@@ -23,6 +25,11 @@ export default function SettingsPage() {
   const [tags, setTags] = useState<CustomerTag[]>([]);
   const [newTagName, setNewTagName] = useState("");
   const [addingTag, setAddingTag] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [newCatName, setNewCatName] = useState("");
+  const [addingCat, setAddingCat] = useState(false);
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editingCatName, setEditingCatName] = useState("");
 
   useEffect(() => {
     if (vendor) {
@@ -34,6 +41,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     tagApi.list().then((data) => setTags(data.tags)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    categoryApi.list().then(setCategories).catch(() => {});
   }, []);
 
   const handleAddTag = async () => {
@@ -57,6 +68,75 @@ export default function SettingsPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาด";
       setMessage(`❌ ${msg}`);
+    }
+  };
+
+  const handleMoveTag = async (index: number, direction: "up" | "down") => {
+    const target = direction === "up" ? index - 1 : index + 1;
+    if (target < 0 || target >= tags.length) return;
+    const reordered = [...tags];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    setTags(reordered);
+    try {
+      await Promise.all([
+        tagApi.update(reordered[index].id, reordered[index].name, index),
+        tagApi.update(reordered[target].id, reordered[target].name, target),
+      ]);
+    } catch {
+      tagApi.list().then((data) => setTags(data.tags)).catch(() => {});
+    }
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCatName.trim()) return;
+    setAddingCat(true);
+    try {
+      const cat = await categoryApi.create(newCatName.trim());
+      setCategories((prev) => [...prev, cat]);
+      setNewCatName("");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาด";
+      setMessage(`❌ ${msg}`);
+    } finally { setAddingCat(false); }
+  };
+
+  const handleRenameCategory = async (id: string) => {
+    if (!editingCatName.trim()) return;
+    try {
+      const updated = await categoryApi.update(id, { name: editingCatName.trim() });
+      setCategories((prev) => prev.map((c) => (c.id === id ? updated : c)));
+      setEditingCatId(null);
+      setEditingCatName("");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาด";
+      setMessage(`❌ ${msg}`);
+    }
+  };
+
+  const handleDeleteCategory = async (id: string, name: string) => {
+    if (!confirm(`ลบหมวดหมู่ "${name}"?\nสินค้าในหมวดนี้จะถูกย้ายออก`)) return;
+    try {
+      await categoryApi.delete(id);
+      setCategories((prev) => prev.filter((c) => c.id !== id));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "เกิดข้อผิดพลาด";
+      setMessage(`❌ ${msg}`);
+    }
+  };
+
+  const handleMoveCategory = async (index: number, direction: "up" | "down") => {
+    const target = direction === "up" ? index - 1 : index + 1;
+    if (target < 0 || target >= categories.length) return;
+    const reordered = [...categories];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    setCategories(reordered);
+    try {
+      await Promise.all([
+        categoryApi.update(reordered[index].id, { sort_order: index }),
+        categoryApi.update(reordered[target].id, { sort_order: target }),
+      ]);
+    } catch {
+      categoryApi.list().then(setCategories).catch(() => {});
     }
   };
 
@@ -245,6 +325,144 @@ export default function SettingsPage() {
           </button>
         </div>
 
+        {/* Font Size */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+          <h2 className="font-semibold text-gray-700 text-base mb-3 flex items-center gap-2">
+            <span className="w-1 h-5 rounded-full bg-cyan-500" />
+            ขนาดตัวอักษร
+          </h2>
+          <p className="text-xs text-gray-400 mb-3">
+            ปรับขนาดตัวอักษรให้เหมาะกับการมองเห็น
+          </p>
+          <div className="grid grid-cols-4 gap-2">
+            {FONT_SIZES.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => setFontSize(f.value)}
+                className={`flex flex-col items-center justify-center gap-1 py-3 rounded-xl border text-sm font-medium min-h-[56px] active:scale-95 transition-all duration-150 ${
+                  fontSize === f.value
+                    ? "bg-cyan-50 border-cyan-400 text-cyan-700 shadow-sm shadow-cyan-500/10"
+                    : "bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300"
+                }`}
+              >
+                <span className={f.value === 85 ? "text-xs" : f.value === 100 ? "text-base" : f.value === 115 ? "text-lg" : "text-xl"}>
+                  {f.emoji}
+                </span>
+                <span className="text-[10px]">{f.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Category Management */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+          <h2 className="font-semibold text-gray-700 text-base mb-4 flex items-center gap-2">
+            <span className="w-1 h-5 rounded-full bg-orange-500" />
+            จัดการหมวดหมู่สินค้า
+          </h2>
+          <p className="text-xs text-gray-400 mb-3">
+            หมวดหมู่ใช้จัดกลุ่มสินค้า เช่น อาหาร, เครื่องดื่ม, ขนม
+          </p>
+
+          {categories.length > 0 ? (
+            <div className="flex flex-col gap-2 mb-4">
+              {categories.map((cat, i) => (
+                <div key={cat.id}>
+                  {editingCatId === cat.id ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={editingCatName}
+                        onChange={(e) => setEditingCatName(e.target.value)}
+                        className="flex-1 px-3 py-2 rounded-lg border border-orange-300 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white min-h-[36px]"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRenameCategory(cat.id);
+                          if (e.key === "Escape") { setEditingCatId(null); setEditingCatName(""); }
+                        }}
+                        onBlur={() => { setEditingCatId(null); setEditingCatName(""); }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRenameCategory(cat.id)}
+                        className="px-3 py-2 rounded-lg bg-orange-500 text-white text-xs font-medium active:scale-95 transition-all"
+                      >
+                        บันทึก
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-300 w-4 text-right font-mono">{i + 1}</span>
+                      <span className="flex-1 inline-flex items-center px-3 py-1.5 rounded-full bg-orange-50 text-orange-700 text-sm font-medium border border-orange-100">
+                        {cat.name}
+                        {cat.product_count != null && (
+                          <span className="ml-2 text-[10px] text-orange-400">({cat.product_count})</span>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { setEditingCatId(cat.id); setEditingCatName(cat.name); }}
+                        className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-orange-100 hover:text-orange-600 transition-colors"
+                        title="เปลี่ยนชื่อ"
+                      >
+                        &#9998;
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveCategory(i, "up")}
+                        disabled={i === 0}
+                        className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-orange-100 hover:text-orange-600 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+                        title="เลื่อนขึ้น"
+                      >
+                        &#9650;
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveCategory(i, "down")}
+                        disabled={i === categories.length - 1}
+                        className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-orange-100 hover:text-orange-600 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+                        title="เลื่อนลง"
+                      >
+                        &#9660;
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCategory(cat.id, cat.name)}
+                        className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-red-100 hover:text-red-500 transition-colors"
+                        title="ลบ"
+                      >
+                        &#10005;
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 text-center py-3 mb-3">ยังไม่มีหมวดหมู่ — เพิ่มด้านล่าง</p>
+          )}
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              placeholder="เพิ่มหมวดหมู่ใหม่ เช่น อาหาร, เครื่องดื่ม..."
+              className="flex-1 px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent bg-white min-h-[44px] transition-all duration-200"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory(); }}
+            />
+            <button
+              type="button"
+              onClick={handleAddCategory}
+              disabled={addingCat || !newCatName.trim()}
+              className="px-5 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 text-white font-bold text-sm min-h-[44px] disabled:opacity-50 active:scale-95 transition-all duration-150 shadow-sm shadow-orange-500/20"
+            >
+              {addingCat ? "..." : "เพิ่ม"}
+            </button>
+          </div>
+        </div>
+
         {/* Tag Management */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
           <h2 className="font-semibold text-gray-700 text-base mb-4 flex items-center gap-2">
@@ -256,18 +474,40 @@ export default function SettingsPage() {
           </p>
 
           {tags.length > 0 ? (
-            <div className="flex flex-wrap gap-2 mb-4">
-              {tags.map((tag) => (
-                <span key={tag.id} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-sm font-medium border border-purple-100">
-                  {tag.name}
+            <div className="flex flex-col gap-2 mb-4">
+              {tags.map((tag, i) => (
+                <div key={tag.id} className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-300 w-4 text-right font-mono">{i + 1}</span>
+                  <span className="flex-1 inline-flex items-center px-3 py-1.5 rounded-full bg-purple-50 text-purple-700 text-sm font-medium border border-purple-100">
+                    {tag.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleMoveTag(i, "up")}
+                    disabled={i === 0}
+                    className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-purple-100 hover:text-purple-600 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+                    title="เลื่อนขึ้น"
+                  >
+                    &#9650;
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleMoveTag(i, "down")}
+                    disabled={i === tags.length - 1}
+                    className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-purple-100 hover:text-purple-600 disabled:opacity-25 disabled:cursor-not-allowed transition-colors"
+                    title="เลื่อนลง"
+                  >
+                    &#9660;
+                  </button>
                   <button
                     type="button"
                     onClick={() => handleDeleteTag(tag.id)}
-                    className="w-5 h-5 rounded-full bg-purple-100 flex items-center justify-center text-purple-400 hover:bg-red-100 hover:text-red-500 min-w-[20px] transition-colors"
+                    className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-red-100 hover:text-red-500 transition-colors"
+                    title="ลบ"
                   >
-                    x
+                    &#10005;
                   </button>
-                </span>
+                </div>
               ))}
             </div>
           ) : (
