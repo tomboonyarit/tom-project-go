@@ -17,7 +17,11 @@ func NewTagHandler(pool *pgxpool.Pool) *TagHandler {
 }
 
 func (h *TagHandler) vendorID(r *http.Request) string {
-	return r.Context().Value(VendorIDKey).(string)
+	v, ok := r.Context().Value(VendorIDKey).(string)
+	if !ok {
+		return ""
+	}
+	return v
 }
 
 func (h *TagHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -35,7 +39,11 @@ func (h *TagHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
 	}
-	if err := readJSON(r, &req); err != nil || req.Name == "" {
+	if err := readJSON(r, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Name == "" {
 		errorJSON(w, http.StatusBadRequest, "name is required")
 		return
 	}

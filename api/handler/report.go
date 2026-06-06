@@ -18,7 +18,11 @@ func NewReportHandler(pool *pgxpool.Pool) *ReportHandler {
 }
 
 func (h *ReportHandler) vendorID(r *http.Request) string {
-	return r.Context().Value(VendorIDKey).(string)
+	v, ok := r.Context().Value(VendorIDKey).(string)
+	if !ok {
+		return ""
+	}
+	return v
 }
 
 func (h *ReportHandler) DailyReport(w http.ResponseWriter, r *http.Request) {

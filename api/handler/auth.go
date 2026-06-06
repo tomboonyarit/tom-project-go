@@ -57,7 +57,11 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check phone not taken
-	existing, _ := repository.VendorFindByPhone(h.pool, req.Phone)
+	existing, err := repository.VendorFindByPhone(h.pool, req.Phone)
+	if err != nil {
+		errorJSON(w, http.StatusInternalServerError, "server error")
+		return
+	}
 	if existing != nil {
 		errorJSON(w, http.StatusConflict, "phone already registered")
 		return
@@ -78,7 +82,11 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := repository.VendorCreate(h.pool, vendor); err != nil {
-		errorJSON(w, http.StatusInternalServerError, "failed to create vendor")
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique") {
+			errorJSON(w, http.StatusConflict, "phone already registered")
+		} else {
+			errorJSON(w, http.StatusInternalServerError, "failed to create vendor")
+		}
 		return
 	}
 

@@ -39,7 +39,7 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
             isPublic
               ? ""
               : "pt-12 md:pt-0 pb-16 md:pb-0 md:ml-64"
-          } ${isPos ? "h-screen overflow-hidden" : "min-h-screen"}`}
+          }           ${isPos ? "h-screen overflow-hidden" : "h-screen overflow-hidden"}`}
         >
           {children}
         </main>

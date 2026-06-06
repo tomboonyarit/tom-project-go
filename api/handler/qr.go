@@ -24,7 +24,11 @@ func NewQRHandler(pool *pgxpool.Pool) *QRHandler {
 // GET /api/qr/promptpay?amount=5000
 // Uses the authenticated vendor's promptpay_id (phone number).
 func (h *QRHandler) Generate(w http.ResponseWriter, r *http.Request) {
-	vendorID := r.Context().Value(VendorIDKey).(string)
+	vendorID, ok := r.Context().Value(VendorIDKey).(string)
+	if !ok {
+		errorJSON(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
 
 	vendor, err := repository.VendorGetByID(h.pool, vendorID)
 	if err != nil {

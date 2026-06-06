@@ -128,7 +128,7 @@ export default function BottomNavBar() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`relative flex flex-col items-center justify-center gap-0.5 min-w-[48px] min-h-[48px] px-2 py-1 rounded-xl transition-all duration-200 ${
+                  className={`group relative flex flex-col items-center justify-center gap-0.5 min-w-[48px] min-h-[48px] px-2 py-1 rounded-xl transition-all duration-200 ${
                     active ? "text-orange-600" : "text-gray-400"
                   }`}
                 >

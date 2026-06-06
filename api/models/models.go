@@ -179,10 +179,10 @@ type CreateProductRequest struct {
 
 type UpdateProductRequest struct {
 	CategoryID *string `json:"category_id"`
-	Name       string  `json:"name"`
-	Price      int     `json:"price"`
-	Unit       string  `json:"unit"`
-	ImageURL   string  `json:"image_url"`
+	Name       *string `json:"name"`
+	Price      *int    `json:"price"`
+	Unit       *string `json:"unit"`
+	ImageURL   *string `json:"image_url"`
 	IsActive   *bool   `json:"is_active"`
 }
 

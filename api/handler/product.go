@@ -19,7 +19,11 @@ func NewProductHandler(pool *pgxpool.Pool) *ProductHandler {
 }
 
 func (h *ProductHandler) vendorID(r *http.Request) string {
-	return r.Context().Value(VendorIDKey).(string)
+	v, ok := r.Context().Value(VendorIDKey).(string)
+	if !ok {
+		return ""
+	}
+	return v
 }
 
 func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -125,20 +129,20 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fields := map[string]interface{}{}
-	if req.Name != "" {
-		fields["name"] = req.Name
+	if req.Name != nil {
+		fields["name"] = *req.Name
 	}
-	if req.Price > 0 {
-		fields["price"] = req.Price
+	if req.Price != nil {
+		fields["price"] = *req.Price
 	}
-	if req.Unit != "" {
-		fields["unit"] = req.Unit
+	if req.Unit != nil {
+		fields["unit"] = *req.Unit
 	}
 	if req.CategoryID != nil {
 		fields["category_id"] = *req.CategoryID
 	}
-	if req.ImageURL != "" {
-		fields["image_url"] = req.ImageURL
+	if req.ImageURL != nil {
+		fields["image_url"] = *req.ImageURL
 	}
 	if req.IsActive != nil {
 		fields["is_active"] = *req.IsActive

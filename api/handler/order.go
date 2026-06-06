@@ -19,7 +19,11 @@ func NewOrderHandler(pool *pgxpool.Pool) *OrderHandler {
 }
 
 func (h *OrderHandler) vendorID(r *http.Request) string {
-	return r.Context().Value(VendorIDKey).(string)
+	v, ok := r.Context().Value(VendorIDKey).(string)
+	if !ok {
+		return ""
+	}
+	return v
 }
 
 func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -139,7 +143,11 @@ func (h *OrderHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := repository.OrderUpdateStatus(h.pool, vendorID, id, req.Status); err != nil {
-		errorJSON(w, http.StatusBadRequest, err.Error())
+		if strings.Contains(err.Error(), "cannot transition") || strings.Contains(err.Error(), "invalid current status") {
+			errorJSON(w, http.StatusBadRequest, err.Error())
+		} else {
+			errorJSON(w, http.StatusInternalServerError, "failed to update status")
+		}
 		return
 	}
 
@@ -167,7 +175,11 @@ func (h *OrderHandler) UpdatePayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := repository.OrderUpdatePayment(h.pool, vendorID, id, req.PaymentMethod); err != nil {
-		errorJSON(w, http.StatusBadRequest, err.Error())
+		if strings.Contains(err.Error(), "invalid") || strings.Contains(err.Error(), "cannot update payment") {
+			errorJSON(w, http.StatusBadRequest, err.Error())
+		} else {
+			errorJSON(w, http.StatusInternalServerError, "failed to update payment")
+		}
 		return
 	}
 

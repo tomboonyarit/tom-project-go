@@ -19,7 +19,11 @@ func NewCategoryHandler(pool *pgxpool.Pool) *CategoryHandler {
 }
 
 func (h *CategoryHandler) vendorID(r *http.Request) string {
-	return r.Context().Value(VendorIDKey).(string)
+	v, ok := r.Context().Value(VendorIDKey).(string)
+	if !ok {
+		return ""
+	}
+	return v
 }
 
 func (h *CategoryHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -73,16 +77,25 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.Name != nil {
 		name = strings.TrimSpace(*req.Name)
 		if name == "" {
-			errorJSON(w, http.StatusBadRequest, "category name is required")
+			errorJSON(w, http.StatusBadRequest, "category name cannot be empty")
 			return
 		}
 	}
 	sortOrder := 0
-	if req.SortOrder != nil {
+	hasSortOrder := req.SortOrder != nil
+	if hasSortOrder {
 		sortOrder = *req.SortOrder
 	}
 
-	if err := repository.CategoryUpdate(h.pool, vendorID, id, name, sortOrder); err != nil {
+	fields := map[string]interface{}{}
+	if req.Name != nil {
+		fields["name"] = name
+	}
+	if hasSortOrder {
+		fields["sort_order"] = sortOrder
+	}
+
+	if err := repository.CategoryUpdate(h.pool, vendorID, id, fields); err != nil {
 		errorJSON(w, http.StatusInternalServerError, "failed to update category")
 		return
 	}

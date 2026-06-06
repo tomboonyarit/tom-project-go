@@ -67,12 +67,17 @@ func OrderCreate(pool *pgxpool.Pool, vendorID string, items []models.CreateOrder
 		}
 	}
 
+	status := "preparing"
+	if paymentMethod != nil {
+		status = "paid"
+	}
+
 	order := &models.Order{}
 	err = tx.QueryRow(ctx,
-		`INSERT INTO orders (vendor_id, order_no, subtotal, discount, total, customer_note, tags, payment_method)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`INSERT INTO orders (vendor_id, order_no, subtotal, discount, total, customer_note, tags, payment_method, status)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 RETURNING id, vendor_id, order_no, subtotal, discount, total, status, payment_method, customer_note, tags, created_at, updated_at`,
-		vendorID, orderNo, subtotal, discount, total, note, tagsStr, paymentMethod,
+		vendorID, orderNo, subtotal, discount, total, note, tagsStr, paymentMethod, status,
 	).Scan(&order.ID, &order.VendorID, &order.OrderNo, &order.Subtotal, &order.Discount, &order.Total,
 		&order.Status, &order.PaymentMethod, &order.CustomerNote, &order.Tags,
 		&order.CreatedAt, &order.UpdatedAt)
@@ -215,6 +220,7 @@ func OrderGetByID(pool *pgxpool.Pool, vendorID, id string) (*models.Order, error
 	if o.Items == nil {
 		o.Items = []models.OrderItem{}
 	}
+	o.ItemCount = len(o.Items)
 
 	return o, nil
 }
@@ -251,9 +257,15 @@ func OrderUpdateStatus(pool *pgxpool.Pool, vendorID, id string, newStatus string
 		return fmt.Errorf("cannot transition from %s to %s", currentStatus, newStatus)
 	}
 
-	_, err = pool.Exec(ctx, `UPDATE orders SET status = $1 WHERE id = $2 AND vendor_id = $3`, newStatus, id, vendorID)
+	tag, err := pool.Exec(ctx,
+		`UPDATE orders SET status = $1 WHERE id = $2 AND vendor_id = $3 AND status = $4`,
+		newStatus, id, vendorID, currentStatus,
+	)
 	if err != nil {
 		return fmt.Errorf("update order status: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("order status changed concurrently, please retry")
 	}
 	return nil
 }
@@ -265,7 +277,16 @@ func OrderUpdatePayment(pool *pgxpool.Pool, vendorID, id string, paymentMethod s
 		return fmt.Errorf("invalid payment method: %s (must be cash or promptpay)", paymentMethod)
 	}
 
-	_, err := pool.Exec(ctx,
+	var status string
+	err := pool.QueryRow(ctx, `SELECT status FROM orders WHERE id = $1 AND vendor_id = $2`, id, vendorID).Scan(&status)
+	if err != nil {
+		return fmt.Errorf("get order: %w", err)
+	}
+	if status == "completed" || status == "cancelled" {
+		return fmt.Errorf("cannot update payment on %s order", status)
+	}
+
+	_, err = pool.Exec(ctx,
 		`UPDATE orders SET payment_method = $1 WHERE id = $2 AND vendor_id = $3`,
 		paymentMethod, id, vendorID,
 	)

@@ -40,11 +40,11 @@ export default function SettingsPage() {
   }, [vendor]);
 
   useEffect(() => {
-    tagApi.list().then((data) => setTags(data.tags)).catch(() => {});
+    tagApi.list().then((data) => setTags(data.tags)).catch(() => setMessage("❌ โหลดแท็กไม่สำเร็จ"));
   }, []);
 
   useEffect(() => {
-    categoryApi.list().then(setCategories).catch(() => {});
+    categoryApi.list().then(setCategories).catch(() => setMessage("❌ โหลดหมวดหมู่ไม่สำเร็จ"));
   }, []);
 
   const handleAddTag = async () => {
@@ -195,7 +195,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-orange-50">
+    <div className="flex flex-col h-full overflow-hidden bg-orange-50">
       {/* Header */}
       <div className="bg-white px-4 pt-4 pb-2 border-b border-gray-100">
         <h1 className="text-xl font-bold text-gray-800">ตั้งค่า</h1>
@@ -381,7 +381,7 @@ export default function SettingsPage() {
                           if (e.key === "Enter") handleRenameCategory(cat.id);
                           if (e.key === "Escape") { setEditingCatId(null); setEditingCatName(""); }
                         }}
-                        onBlur={() => { setEditingCatId(null); setEditingCatName(""); }}
+                        onBlur={() => { if (editingCatName.trim()) handleRenameCategory(cat.id); else { setEditingCatId(null); setEditingCatName(""); } }}
                       />
                       <button
                         type="button"

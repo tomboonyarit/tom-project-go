@@ -55,23 +55,24 @@ func CategoryCreate(pool *pgxpool.Pool, vendorID, name string, sortOrder int) (*
 	return c, nil
 }
 
-func CategoryUpdate(pool *pgxpool.Pool, vendorID, id string, name string, sortOrder int) error {
-	if name != "" {
-		_, err := pool.Exec(
-			context.Background(),
-			`UPDATE categories SET name = $1, sort_order = $2 WHERE id = $3 AND vendor_id = $4`,
-			name, sortOrder, id, vendorID,
-		)
-		if err != nil {
-			return fmt.Errorf("update category: %w", err)
-		}
+func CategoryUpdate(pool *pgxpool.Pool, vendorID, id string, fields map[string]interface{}) error {
+	if len(fields) == 0 {
 		return nil
 	}
-	_, err := pool.Exec(
-		context.Background(),
-		`UPDATE categories SET sort_order = $1 WHERE id = $2 AND vendor_id = $3`,
-		sortOrder, id, vendorID,
+	setClauses := []string{}
+	args := []interface{}{}
+	i := 1
+	for col, val := range fields {
+		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", col, i))
+		args = append(args, val)
+		i++
+	}
+	args = append(args, id, vendorID)
+	query := fmt.Sprintf(
+		"UPDATE categories SET %s WHERE id = $%d AND vendor_id = $%d",
+		setClauses[0], i, i+1,
 	)
+	_, err := pool.Exec(context.Background(), query, args...)
 	if err != nil {
 		return fmt.Errorf("update category: %w", err)
 	}
@@ -79,8 +80,14 @@ func CategoryUpdate(pool *pgxpool.Pool, vendorID, id string, name string, sortOr
 }
 
 func CategoryDelete(pool *pgxpool.Pool, vendorID, id string) error {
-	_, err := pool.Exec(
-		context.Background(),
+	ctx := context.Background()
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx,
 		`UPDATE products SET category_id = NULL WHERE category_id = $1 AND vendor_id = $2`,
 		id, vendorID,
 	)
@@ -88,13 +95,16 @@ func CategoryDelete(pool *pgxpool.Pool, vendorID, id string) error {
 		return fmt.Errorf("unset product categories: %w", err)
 	}
 
-	_, err = pool.Exec(
-		context.Background(),
+	_, err = tx.Exec(ctx,
 		`DELETE FROM categories WHERE id = $1 AND vendor_id = $2`,
 		id, vendorID,
 	)
 	if err != nil {
 		return fmt.Errorf("delete category: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit delete: %w", err)
 	}
 	return nil
 }

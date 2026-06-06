@@ -6,7 +6,6 @@ import { formatBaht, formatThaiTime, todayISO } from "@/lib/utils";
 
 const statusTabs: Array<{ label: string; value: OrderStatus | "" }> = [
   { label: "ทั้งหมด", value: "" },
-  { label: "ใหม่", value: "new" },
   { label: "กำลังจัด", value: "preparing" },
   { label: "ชำระแล้ว", value: "paid" },
   { label: "เสร็จแล้ว", value: "completed" },
@@ -32,15 +31,17 @@ export default function OrdersPage() {
   const [expandedItems, setExpandedItems] = useState<OrderItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [predefinedTags, setPredefinedTags] = useState<CustomerTag[]>([]);
+  const [error, setError] = useState("");
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const data = await orderApi.list(date, statusFilter || undefined);
       setOrders(data.orders);
       setTotalOrders(data.total_orders);
       setTotalRevenue(data.total_revenue);
-    } catch { /* ignore */ }
+    } catch { setError("โหลดข้อมูลไม่สำเร็จ กรุณาลองใหม่"); }
     finally { setLoading(false); }
   }, [date, statusFilter]);
 
@@ -86,10 +87,10 @@ export default function OrdersPage() {
     }
   };
 
-  const activeOrders = orders.filter((o) => o.status !== "completed" && o.status !== "cancelled").length;
+  const activeOrders = orders.filter((o) => o.status === "preparing" || o.status === "paid").length;
 
   return (
-    <div className="flex flex-col min-h-screen bg-orange-50">
+    <div className="flex flex-col h-full overflow-hidden bg-orange-50">
       {/* Header + Summary + Date in one compact bar */}
       <div className="bg-white px-3 pt-2.5 pb-2 border-b border-gray-100">
         <div className="flex items-center justify-between mb-2">
@@ -109,13 +110,23 @@ export default function OrdersPage() {
           <div className="flex-1 bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl px-3 py-2 border border-orange-100">
             <p className="text-[10px] text-gray-500">{activeOrders} กำลังทำ</p>
             <p className="text-sm font-bold text-gray-800">
-              {orders.filter((o) => o.status !== "completed" && o.status !== "cancelled").reduce((s, o) => s + o.total, 0) > 0
-                ? formatBaht(orders.filter((o) => o.status !== "completed" && o.status !== "cancelled").reduce((s, o) => s + o.total, 0))
+              {orders.filter((o) => o.status === "preparing" || o.status === "paid").reduce((s, o) => s + o.total, 0) > 0
+                ? formatBaht(orders.filter((o) => o.status === "preparing" || o.status === "paid").reduce((s, o) => s + o.total, 0))
                 : "-"}
             </p>
           </div>
         </div>
       </div>
+
+      {/* Error banner */}
+      {error && (
+        <div className="px-3 pt-1 pb-0 bg-white">
+          <div className="bg-red-50 text-red-600 text-xs px-3 py-2 rounded-lg border border-red-100 flex items-center gap-2">
+            {error}
+            <button type="button" onClick={fetchOrders} className="ml-auto text-red-600 font-bold underline">ลองใหม่</button>
+          </div>
+        </div>
+      )}
 
       {/* Status tabs — compact */}
       <div className="flex gap-1.5 overflow-x-auto no-scrollbar px-3 py-2 bg-white border-b border-gray-100">

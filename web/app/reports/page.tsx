@@ -13,14 +13,17 @@ export default function ReportsPage() {
   const [dailyReport, setDailyReport] = useState<DailyReport | null>(null);
   const [monthlyReport, setMonthlyReport] = useState<MonthlyReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const fetchDaily = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const data = await reportApi.daily(dailyDate);
       setDailyReport(data);
     } catch {
       setDailyReport(null);
+      setError("โหลดรายงานไม่สำเร็จ");
     } finally {
       setLoading(false);
     }
@@ -28,11 +31,13 @@ export default function ReportsPage() {
 
   const fetchMonthly = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const data = await reportApi.monthly(monthlyMonth);
       setMonthlyReport(data);
     } catch {
       setMonthlyReport(null);
+      setError("โหลดรายงานไม่สำเร็จ");
     } finally {
       setLoading(false);
     }
@@ -48,7 +53,7 @@ export default function ReportsPage() {
     : 1;
 
   return (
-    <div className="flex flex-col min-h-screen bg-orange-50">
+    <div className="flex flex-col h-full overflow-hidden bg-orange-50">
       {/* Header */}
       <div className="bg-white px-4 pt-4 pb-2 border-b border-gray-100">
         <h1 className="text-xl font-bold text-gray-800">รายงาน</h1>
@@ -101,8 +106,8 @@ export default function ReportsPage() {
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {loading ? (
           <>
-            <div className="grid grid-cols-3 gap-3">
-              {Array.from({ length: 3 }).map((_, i) => (
+            <div className="grid grid-cols-2 gap-3">
+              {Array.from({ length: 2 }).map((_, i) => (
                 <div key={i} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
                   <div className="skeleton skeleton-text-sm w-12 mb-2" />
                   <div className="skeleton skeleton-heading w-16" />
@@ -138,21 +143,15 @@ function DailyView({ report }: { report: DailyReport }) {
   return (
     <div className="animate-fade-in-up">
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
           <p className="text-xs text-gray-400 mb-1">ออร์เดอร์</p>
           <p className="text-xl font-bold text-gray-800">{report.total_orders}</p>
         </div>
         <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl p-4 shadow-sm border border-emerald-100">
           <p className="text-xs text-gray-400 mb-1">รายได้</p>
-          <p className="text-xl font-bold text-emerald-600 tabular-nums">
+          <p className="text-lg font-bold text-emerald-600 tabular-nums truncate">
             {formatBaht(report.total_revenue)}
-          </p>
-        </div>
-        <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-2xl p-4 shadow-sm border border-red-100">
-          <p className="text-xs text-gray-400 mb-1">ส่วนลด</p>
-          <p className="text-xl font-bold text-red-500 tabular-nums">
-            {formatBaht(report.total_discount)}
           </p>
         </div>
       </div>
@@ -241,21 +240,15 @@ function MonthlyView({
   return (
     <div className="animate-fade-in-up">
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
           <p className="text-xs text-gray-400 mb-1">ออร์เดอร์</p>
           <p className="text-xl font-bold text-gray-800">{report.total_orders}</p>
         </div>
         <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl p-4 shadow-sm border border-emerald-100">
           <p className="text-xs text-gray-400 mb-1">รายได้</p>
-          <p className="text-xl font-bold text-emerald-600 tabular-nums">
+          <p className="text-lg font-bold text-emerald-600 tabular-nums truncate">
             {formatBaht(report.total_revenue)}
-          </p>
-        </div>
-        <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-2xl p-4 shadow-sm border border-red-100">
-          <p className="text-xs text-gray-400 mb-1">ส่วนลด</p>
-          <p className="text-xl font-bold text-red-500 tabular-nums">
-            {formatBaht(report.total_discount)}
           </p>
         </div>
       </div>

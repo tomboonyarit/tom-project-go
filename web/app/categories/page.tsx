@@ -10,13 +10,16 @@ export default function CategoriesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
+  const [error, setError] = useState("");
+
   const fetchCategories = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
       const data = await categoryApi.list();
       setCategories(data);
     } catch {
-      // ignore
+      setError("โหลดข้อมูลไม่สำเร็จ");
     } finally {
       setLoading(false);
     }
@@ -65,7 +68,7 @@ export default function CategoriesPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-orange-50">
+    <div className="flex flex-col h-full overflow-hidden bg-orange-50">
       {/* Header */}
       <div className="bg-white px-4 pt-4 pb-2 border-b border-gray-100">
         <h1 className="text-xl font-bold text-gray-800">หมวดหมู่</h1>
@@ -90,6 +93,13 @@ export default function CategoriesPage() {
           </button>
         </form>
       </div>
+
+      {/* Error */}
+      {error && (
+        <div className="px-4 pt-1">
+          <div className="bg-red-50 text-red-600 text-xs px-3 py-2 rounded-lg border border-red-100">{error}</div>
+        </div>
+      )}
 
       {/* Category list */}
       <div className="flex-1 overflow-y-auto p-4">

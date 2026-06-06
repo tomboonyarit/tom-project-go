@@ -189,7 +189,7 @@ export default function POSPage() {
         customer_note: customerNote || undefined,
         tags: selectedTags.length > 0 ? selectedTags : undefined,
       });
-      setSuccessMsg("บันทึกออเดอร์สำเร็จ — รับออเดอร์ต่อไปได้เลย");
+      setSuccessMsg("สั่งออเดอร์ไว้ก่อน — รับออเดอร์ต่อไปได้เลย");
       clearCart();
       setCustomerNote("");
       setSelectedTags([]);
@@ -216,7 +216,7 @@ export default function POSPage() {
         tags: selectedTags.length > 0 ? selectedTags : undefined,
         payment_method: paymentMethod,
       });
-      setSuccessMsg("บันทึกออเดอร์สำเร็จ!");
+      setSuccessMsg("ชำระเงินสำเร็จ!");
       clearCart();
       setShowCheckout(false);
       setCheckoutStep("select");
@@ -428,7 +428,7 @@ export default function POSPage() {
       <button
         type="button"
         onClick={() => setCartLevel((prev) => (prev === 0 ? 1 : 0))}
-        className="relative z-30 flex items-center justify-center gap-2 py-2.5 bg-white border-t border-gray-200 select-none min-h-[44px] active:bg-gray-50 transition-colors flex-shrink-0"
+        className="relative z-[60] flex items-center justify-center gap-2 py-2.5 bg-white border-t border-gray-200 select-none min-h-[44px] active:bg-gray-50 transition-colors flex-shrink-0"
       >
         <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-600">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
@@ -441,7 +441,7 @@ export default function POSPage() {
 
       {/* ===== Cart Drawer (fullscreen) ===== */}
       {cartLevel === 1 && (
-        <div className="fixed inset-0 z-20 bg-white flex flex-col animate-slide-in-up">
+        <div className="fixed inset-0 z-50 bg-white flex flex-col animate-slide-in-up">
           <button
             type="button"
             onClick={() => setCartLevel(0)}
@@ -520,7 +520,7 @@ export default function POSPage() {
               </div>
             )}
           </div>
-          <div className="border-t border-gray-100 px-4 py-3 pb-5 md:pb-3 space-y-3">
+          <div className="border-t border-gray-100 px-4 py-3 pb-5 md:pb-3 space-y-3 safe-area-bottom">
             <div className="flex justify-between text-sm">
               <span className="text-gray-500">รวม</span>
               <span className="font-semibold text-gray-700 tabular-nums">{formatBaht(subtotal)}</span>
@@ -536,7 +536,7 @@ export default function POSPage() {
                 disabled={cart.length === 0 || checkoutLoading}
                 className="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-bold text-sm min-h-[48px] active:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-[0.98]"
               >
-                {checkoutLoading ? "..." : "บันทึก"}
+                {checkoutLoading ? "..." : "สั่งไว้ก่อน"}
               </button>
               <button
                 type="button"
@@ -562,7 +562,7 @@ export default function POSPage() {
               disabled={checkoutLoading}
               className="px-4 py-2 rounded-xl bg-gray-100 text-gray-700 font-bold text-sm min-h-[40px] active:bg-gray-200 disabled:opacity-40 transition-all duration-150 active:scale-95"
             >
-              {checkoutLoading ? "..." : "บันทึก"}
+              {checkoutLoading ? "..." : "สั่งไว้ก่อน"}
             </button>
             <button
               type="button"
