@@ -704,11 +704,11 @@ function CheckoutModal({
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white animate-slide-in-up">
       {/* Header */}
-      <div className="flex items-center px-4 py-3 border-b border-gray-100 bg-white">
+      <div className="flex items-center px-3 py-3 border-b border-gray-100 bg-white flex-shrink-0 min-h-[52px]">
         <button
           type="button"
           onClick={step === "confirm" ? () => setStep("select") : onClose}
-          className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl active:bg-gray-100 transition-colors"
+          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl active:bg-gray-100 transition-colors"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-6 h-6 text-gray-600">
             <path d="m15 18-6-6 6-6" />
@@ -717,7 +717,7 @@ function CheckoutModal({
         <h2 className="flex-1 text-center font-bold text-gray-800 text-lg">
           {step === "select" ? "เลือกชำระเงิน" : "ยืนยันคำสั่งซื้อ"}
         </h2>
-        <div className="w-10" />
+        <div className="w-11" />
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">

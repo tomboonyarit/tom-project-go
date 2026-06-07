@@ -35,7 +35,7 @@ export default function ClientLayout({ children }: { children: ReactNode }) {
         )}
 
         <main
-          className={`flex-1 page-enter ${
+          className={`flex-1 ${isPos ? "" : "page-enter"} ${
             isPublic
               ? ""
               : "pt-12 md:pt-0 pb-16 md:pb-0 md:ml-64"
