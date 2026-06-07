@@ -2,120 +2,145 @@ package handler
 
 import (
 	"net/http"
+	"regexp"
+	"strings"
+	"time"
 
 	"api/models"
 	"api/repository"
 
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
 
+// AuthHandler handles registration and login.
 type AuthHandler struct {
-	userRepo *repository.UserRepo
+	pool      *pgxpool.Pool
+	jwtSecret string
 }
 
-func NewAuthHandler(userRepo *repository.UserRepo) *AuthHandler {
-	return &AuthHandler{userRepo: userRepo}
+func NewAuthHandler(pool *pgxpool.Pool, jwtSecret string) *AuthHandler {
+	return &AuthHandler{pool: pool, jwtSecret: jwtSecret}
 }
 
-// Register handles POST /api/auth/register
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
-	var input models.CreateUserInput
-	if err := decodeJSON(r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+	var req models.RegisterRequest
+	if err := readJSON(r, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if input.Email == "" || input.Password == "" || input.Name == "" {
-		writeError(w, http.StatusBadRequest, "bad_request", "Email, password, and name are required")
+	// Trim spaces
+	req.Phone = strings.TrimSpace(req.Phone)
+	req.PIN = strings.TrimSpace(req.PIN)
+	req.Name = strings.TrimSpace(req.Name)
+
+	// Validate phone: must be 10 digits starting with 0
+	phoneRegex := regexp.MustCompile(`^0[0-9]{9}$`)
+	if !phoneRegex.MatchString(req.Phone) {
+		errorJSON(w, http.StatusBadRequest, "phone must be 10 digits starting with 0")
 		return
 	}
 
-	// Check if email already exists
-	existing, err := h.userRepo.FindByEmail(r.Context(), input.Email)
+	// Validate PIN: 6 digits
+	pinRegex := regexp.MustCompile(`^[0-9]{6}$`)
+	if !pinRegex.MatchString(req.PIN) {
+		errorJSON(w, http.StatusBadRequest, "PIN must be 6 digits")
+		return
+	}
+
+	// Validate name
+	if req.Name == "" {
+		errorJSON(w, http.StatusBadRequest, "name is required")
+		return
+	}
+
+	// Check phone not taken
+	existing, err := repository.VendorFindByPhone(h.pool, req.Phone)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Database error")
+		errorJSON(w, http.StatusInternalServerError, "server error")
 		return
 	}
 	if existing != nil {
-		writeError(w, http.StatusConflict, "conflict", "Email already registered")
+		errorJSON(w, http.StatusConflict, "phone already registered")
 		return
 	}
 
-	// Hash password
-	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	// Hash PIN
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.PIN), bcrypt.DefaultCost)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Failed to hash password")
+		errorJSON(w, http.StatusInternalServerError, "failed to process password")
 		return
 	}
 
-	// Default role
-	if input.Role == "" {
-		input.Role = models.UserRoleCustomer
+	vendor := &models.Vendor{
+		Phone:     req.Phone,
+		PinHash:   string(hash),
+		Name:      req.Name,
+		BoothName: req.BoothName,
 	}
 
-	user, err := h.userRepo.Create(r.Context(), input, string(hashedBytes))
+	if err := repository.VendorCreate(h.pool, vendor); err != nil {
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique") {
+			errorJSON(w, http.StatusConflict, "phone already registered")
+		} else {
+			errorJSON(w, http.StatusInternalServerError, "failed to create vendor")
+		}
+		return
+	}
+
+	// Generate JWT
+	token, err := h.generateToken(vendor.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Failed to create user")
+		errorJSON(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
 
-	// Generate token
-	token, err := GenerateToken(user.ID, string(user.Role))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Failed to generate token")
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, map[string]interface{}{
-		"user":  user.ToResponse(),
-		"token": token,
+	writeJSON(w, http.StatusCreated, models.AuthResponse{
+		Vendor: *vendor,
+		Token:  token,
 	})
 }
 
-// Login handles POST /api/auth/login
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	if err := decodeJSON(r, &input); err != nil {
-		writeError(w, http.StatusBadRequest, "bad_request", "Invalid request body")
+	var req models.LoginRequest
+	if err := readJSON(r, &req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if input.Email == "" || input.Password == "" {
-		writeError(w, http.StatusBadRequest, "bad_request", "Email and password are required")
-		return
-	}
+	req.Phone = strings.TrimSpace(req.Phone)
 
-	user, err := h.userRepo.FindByEmail(r.Context(), input.Email)
+	vendor, err := repository.VendorFindByPhone(h.pool, req.Phone)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Database error")
-		return
-	}
-	if user == nil {
-		writeError(w, http.StatusUnauthorized, "unauthorized", "Invalid email or password")
+		errorJSON(w, http.StatusUnauthorized, "invalid phone or PIN")
 		return
 	}
 
-	if !user.IsActive {
-		writeError(w, http.StatusForbidden, "forbidden", "Account is deactivated")
+	if err := bcrypt.CompareHashAndPassword([]byte(vendor.PinHash), []byte(req.PIN)); err != nil {
+		errorJSON(w, http.StatusUnauthorized, "invalid phone or PIN")
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password)); err != nil {
-		writeError(w, http.StatusUnauthorized, "unauthorized", "Invalid email or password")
-		return
-	}
-
-	token, err := GenerateToken(user.ID, string(user.Role))
+	token, err := h.generateToken(vendor.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "server_error", "Failed to generate token")
+		errorJSON(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"user":  user.ToResponse(),
-		"token": token,
+	writeJSON(w, http.StatusOK, models.AuthResponse{
+		Vendor: *vendor,
+		Token:  token,
 	})
+}
+
+func (h *AuthHandler) generateToken(vendorID string) (string, error) {
+	claims := jwt.MapClaims{
+		"vendor_id": vendorID,
+		"exp":       time.Now().Add(72 * time.Hour).Unix(),
+		"iat":       time.Now().Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(h.jwtSecret))
 }
